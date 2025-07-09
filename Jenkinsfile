@@ -1,18 +1,22 @@
-podTemplate(
-    label: 'mypod-template',
-    containers: [
-        containerTemplate(
-            name: 'maven',
-            image: 'maven:3.8.1-openjdk-11',
-            command: 'cat',
-            ttyEnabled: true
-        )
-    ],
-    idleMinutes: 10
-) {
-    node('mypod-template') {
-        container('maven') {
-            sh 'echo Hello from Maven container'
-        }
+pipeline {
+  agent any
+  stages {
+    stage('Checkout') {
+      steps {
+        git url: 'https://github.com/kannankdevops/<your-repo-name>.git', branch: 'main'
+      }
     }
+
+    stage('Build Docker Image') {
+      steps {
+        sh 'docker build -t myapp .'
+      }
+    }
+
+    stage('Run Docker Container') {
+      steps {
+        sh 'docker run --rm myapp'
+      }
+    }
+  }
 }
