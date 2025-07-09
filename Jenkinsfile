@@ -1,8 +1,8 @@
 podTemplate(label: 'mypod-template', containers: [
     containerTemplate(
         name: 'jnlp',
-        image: 'jenkins/inbound-agent:3107.v665000b_51092-10',
-        args: '${computer.jnlpmac} ${computer.name}' // <== 🔥 REQUIRED to use TCP port 50000
+        image: 'jenkins/inbound-agent:3107.v665000b_51092-10',  // Recommended stable version
+        args: '${computer.jnlpmac} ${computer.name}'            // 🔥 Must be present
     ),
     containerTemplate(
         name: 'maven',
