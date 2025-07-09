@@ -1,6 +1,10 @@
 pipeline {
   agent any
 
+  environment {
+    IMAGE_NAME = "kkaann/myapp:latest"
+  }
+
   stages {
     stage('Build Docker Image') {
       steps {
@@ -20,13 +24,12 @@ pipeline {
       }
     }
 
-    stage('Run Container') {
+    stage('Deploy to Kubernetes') {
       steps {
-        withCredentials([usernamePassword(credentialsId: 'kkaann', usernameVariable: 'DOCKER_USER', passwordVariable: 'DOCKER_PASS')]) {
-          sh """
-            docker run --rm $DOCKER_USER/myapp:latest
-          """
-        }
+        sh '''
+          kubectl apply -f k8s-deploy/deployment.yaml
+          kubectl apply -f k8s-deploy/service.yaml
+        '''
       }
     }
   }
