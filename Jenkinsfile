@@ -22,7 +22,11 @@ pipeline {
 
     stage('Run Container') {
       steps {
-        sh 'docker run --rm "$DOCKER_USER/myapp:latest"'
+        withCredentials([usernamePassword(credentialsId: 'kkaann', usernameVariable: 'DOCKER_USER', passwordVariable: 'DOCKER_PASS')]) {
+          sh """
+            docker run --rm $DOCKER_USER/myapp:latest
+          """
+        }
       }
     }
   }
