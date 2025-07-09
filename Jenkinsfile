@@ -10,7 +10,7 @@ podTemplate(label: 'mypod-template', containers: [
         command: 'cat',
         ttyEnabled: true
     )
-]) {
+], idleMinutes: 10) {  // <- THIS KEEPS POD ALIVE LONG ENOUGH
     node('mypod-template') {
         container('maven') {
             sh 'echo Hello from Maven container'
