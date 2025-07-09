@@ -13,8 +13,8 @@ pipeline {
         withCredentials([usernamePassword(credentialsId: 'kkaann', usernameVariable: 'DOCKER_USER', passwordVariable: 'DOCKER_PASS')]) {
           sh '''
             echo "$DOCKER_PASS" | docker login -u "$DOCKER_USER" --password-stdin
-            docker tag myapp $DOCKER_USER/myapp:latest
-            docker push $DOCKER_USER/myapp:latest
+            docker tag myapp "$DOCKER_USER/myapp:latest"
+            docker push "$DOCKER_USER/myapp:latest"
           '''
         }
       }
@@ -22,7 +22,7 @@ pipeline {
 
     stage('Run Container') {
       steps {
-        sh 'docker run --rm $DOCKER_USER/myapp:latest'
+        sh 'docker run --rm "$DOCKER_USER/myapp:latest"'
       }
     }
   }
