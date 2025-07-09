@@ -2,8 +2,7 @@ pipeline {
   agent any
 
   environment {
-    IMAGE_NAME = "kkaann/myapp:latest"
-    K8S_NAMESPACE = "mynamespace"
+    IMAGE = 'kkaann/myapp:latest'
   }
 
   stages {
@@ -18,8 +17,8 @@ pipeline {
         withCredentials([usernamePassword(credentialsId: 'kkaann', usernameVariable: 'DOCKER_USER', passwordVariable: 'DOCKER_PASS')]) {
           sh '''
             echo "$DOCKER_PASS" | docker login -u "$DOCKER_USER" --password-stdin
-            docker tag myapp "$DOCKER_USER/myapp:latest"
-            docker push "$DOCKER_USER/myapp:latest"
+            docker tag myapp "$IMAGE"
+            docker push "$IMAGE"
           '''
         }
       }
@@ -28,9 +27,18 @@ pipeline {
     stage('Deploy to Kubernetes') {
       steps {
         sh '''
-          kubectl create namespace $K8S_NAMESPACE || true
-          kubectl apply -f myapp-deployment.yaml --namespace=$K8S_NAMESPACE
-          kubectl apply -f myapp-service.yaml --namespace=$K8S_NAMESPACE
+          kubectl apply -f k8s-deploy/myapp-deployment.yaml
+          kubectl apply -f k8s-deploy/myapp-service.yaml
+        '''
+      }
+    }
+
+    stage('Optional Sanity Check') {
+      steps {
+        sh '''
+          echo "Waiting 10s before checking pod status..."
+          sleep 10
+          kubectl get pods -n default
         '''
       }
     }
