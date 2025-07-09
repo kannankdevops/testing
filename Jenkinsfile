@@ -1,21 +1,28 @@
 pipeline {
   agent any
-  stages {
-    stage('Checkout') {
-      steps {
-        git url: 'https://github.com/kannankdevops/testing/', branch: 'main'
-      }
-    }
 
+  stages {
     stage('Build Docker Image') {
       steps {
         sh 'docker build -t myapp .'
       }
     }
 
-    stage('Run Docker Container') {
+    stage('Push to DockerHub') {
       steps {
-        sh 'docker run --rm myapp'
+        withCredentials([usernamePassword(credentialsId: 'dockerhub-creds', usernameVariable: 'DOCKER_USER', passwordVariable: 'DOCKER_PASS')]) {
+          sh '''
+            echo "$DOCKER_PASS" | docker login -u "$DOCKER_USER" --password-stdin
+            docker tag myapp $DOCKER_USER/myapp:latest
+            docker push $DOCKER_USER/myapp:latest
+          '''
+        }
+      }
+    }
+
+    stage('Run Container') {
+      steps {
+        sh 'docker run --rm $DOCKER_USER/myapp:latest'
       }
     }
   }
