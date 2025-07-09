@@ -1,8 +1,8 @@
 podTemplate(label: 'mypod-template', containers: [
     containerTemplate(
         name: 'jnlp',
-        image: 'jenkins/inbound-agent:3107.v665000b_51092-10',  // Recommended stable version
-        args: '${computer.jnlpmac} ${computer.name}'            // 🔥 Must be present
+        image: 'jenkins/inbound-agent:3107.v665000b_51092-10',
+        args: '${computer.jnlpmac} ${computer.name}'
     ),
     containerTemplate(
         name: 'maven',
@@ -13,7 +13,7 @@ podTemplate(label: 'mypod-template', containers: [
 ]) {
     node('mypod-template') {
         container('maven') {
-            sh 'mvn -version'
+            sh 'echo Hello from Maven container'
         }
     }
 }
