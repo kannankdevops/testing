@@ -3,6 +3,7 @@ pipeline {
 
   environment {
     IMAGE_NAME = "kkaann/myapp:latest"
+    K8S_NAMESPACE = "mynamespace"
   }
 
   stages {
@@ -27,8 +28,9 @@ pipeline {
     stage('Deploy to Kubernetes') {
       steps {
         sh '''
-          kubectl apply -f k8s-deploy/deployment.yaml
-          kubectl apply -f k8s-deploy/service.yaml
+          kubectl create namespace $K8S_NAMESPACE || true
+          kubectl apply -f myapp-deployment.yaml --namespace=$K8S_NAMESPACE
+          kubectl apply -f myapp-service.yaml --namespace=$K8S_NAMESPACE
         '''
       }
     }
