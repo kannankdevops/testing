@@ -1,3 +1,3 @@
 FROM ubuntu:latest
-RUN apt-get update && apt-get install -y curl
-CMD ["echo", "Hello from Jenkins + Docker"]
+RUN apt-get update && apt-get install -y python3
+CMD ["python3", "-m", "http.server", "80"]
