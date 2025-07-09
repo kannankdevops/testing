@@ -11,7 +11,7 @@ podTemplate(label: 'mypod-template', containers: [
     ttyEnabled: true
   )
 ]) {
-  node('mypod-template') {   // 👈 This must match podTemplate's label!
+  node('mypod-template') {
     container('maven') {
       sh 'mvn -version'
     }
