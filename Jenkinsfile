@@ -27,7 +27,7 @@ pipeline {
     stage('Deploy to Kubernetes') {
       steps {
         withCredentials([file(credentialsId: 'kubeconfig', variable: 'KUBECONFIG_FILE')]) {
-          withDockerContainer(image: 'registry.k8s.io/kubectl:v1.30.1') {
+          withDockerContainer(image: 'bitnami/kubectl:1.30', args: '--entrypoint=sh') {
             sh '''
               export KUBECONFIG=$KUBECONFIG_FILE
               kubectl apply -f k8s-deploy/myapp-deployment.yaml
@@ -41,7 +41,7 @@ pipeline {
     stage('Optional Sanity Check') {
       steps {
         withCredentials([file(credentialsId: 'kubeconfig', variable: 'KUBECONFIG_FILE')]) {
-          withDockerContainer(image: 'registry.k8s.io/kubectl:v1.30.1') {
+          withDockerContainer(image: 'bitnami/kubectl:1.30', args: '--entrypoint=sh') {
             sh '''
               export KUBECONFIG=$KUBECONFIG_FILE
               echo "Waiting 10s before checking pod status..."
