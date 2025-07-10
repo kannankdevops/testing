@@ -6,33 +6,59 @@ apiVersion: v1
 kind: Pod
 spec:
   containers:
-  - name: jnlp
-    image: jenkins/inbound-agent
-    args: ['\$(JENKINS_SECRET)', '\$(JENKINS_NAME)']
-  - name: alpine
-    image: alpine
+  - name: docker
+    image: docker:24.0
     command:
     - cat
     tty: true
+    volumeMounts:
+    - name: docker-sock
+      mountPath: /var/run/docker.sock
+  volumes:
+  - name: docker-sock
+    hostPath:
+      path: /var/run/docker.sock
 """
     }
   }
 
+  environment {
+    IMAGE = "kannankdevops/myapp:latest"
+  }
+
   stages {
-    stage('Check JNLP Agent') {
+    stage('Checkout') {
       steps {
-        sh 'echo Hello from Jenkins jnlp agent!'
-        sh 'whoami'
-        sh 'hostname'
+        checkout scm
       }
     }
 
-    stage('Alpine Container') {
+    stage('Build Docker Image') {
       steps {
-        container('alpine') {
-          sh 'echo Running inside alpine container!'
-          sh 'apk add --no-cache curl'
-          sh 'curl https://ifconfig.me'
+        container('docker') {
+          sh 'docker build -t $IMAGE .'
+        }
+      }
+    }
+
+    stage('Push to DockerHub') {
+      steps {
+        container('docker') {
+          withCredentials([usernamePassword(credentialsId: 'dockerhub', usernameVariable: 'USER', passwordVariable: 'PASS')]) {
+            sh '''
+              echo "$PASS" | docker login -u "$USER" --password-stdin
+              docker push $IMAGE
+            '''
+          }
+        }
+      }
+    }
+
+    stage('Deploy to Kubernetes') {
+      steps {
+        container('docker') {
+          sh 'kubectl apply -f myapp-deployment.yaml -n jenkins'
+          sh 'kubectl apply -f myapp-service.yaml -n jenkins'
         }
       }
     }
