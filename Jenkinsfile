@@ -3,10 +3,10 @@ pipeline {
     label 'kubectl-agent'
   }
   stages {
-    stage('Verify kubectl') {
+    stage('Run kubectl') {
       steps {
         container('kubectl') {
-          sh 'kubectl version --client'
+          sh 'kubectl get nodes'
         }
       }
     }
