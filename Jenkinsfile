@@ -1,19 +1,16 @@
 pipeline {
   agent {
     kubernetes {
-      label 'kubectl-agent'
       defaultContainer 'kubectl'
       yaml """
 apiVersion: v1
 kind: Pod
-metadata:
-  labels:
-    jenkins-agent: kubectl-agent
 spec:
   containers:
   - name: kubectl
     image: bitnami/kubectl:latest
-    command: ['cat']
+    command:
+    - cat
     tty: true
 """
     }
