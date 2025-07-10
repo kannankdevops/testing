@@ -4,49 +4,35 @@ pipeline {
       yaml """
 apiVersion: v1
 kind: Pod
-metadata:
-  labels:
-    some-label: kubectl-agent
 spec:
   containers:
-  - name: kubectl
-    image: bitnami/kubectl:latest
-    command: ['cat']
-    tty: true
-    volumeMounts:
-    - name: kubeconfig-volume
-      mountPath: /home/jenkins/.kube
-    env:
-    - name: KUBECONFIG
-      value: /home/jenkins/.kube/kubeconfig
   - name: jnlp
-    image: jenkins/inbound-agent:latest
-    args: ['']
-    volumeMounts:
-    - name: kubeconfig-volume
-      mountPath: /home/jenkins/.kube
-    env:
-    - name: KUBECONFIG
-      value: /home/jenkins/.kube/kubeconfig
-  volumes:
-  - name: kubeconfig-volume
-    secret:
-      secretName: kubeconfig-secret
+    image: jenkins/inbound-agent
+    args: ['\$(JENKINS_SECRET)', '\$(JENKINS_NAME)']
+  - name: alpine
+    image: alpine
+    command:
+    - cat
+    tty: true
 """
     }
   }
+
   stages {
-    stage('Check kubectl access') {
+    stage('Check JNLP Agent') {
       steps {
-        container('kubectl') {
-          sh 'kubectl get pods -n kube-system'
-        }
+        sh 'echo Hello from Jenkins jnlp agent!'
+        sh 'whoami'
+        sh 'hostname'
       }
     }
-    stage('Deploy App') {
+
+    stage('Alpine Container') {
       steps {
-        container('kubectl') {
-          sh 'kubectl apply -f k8s/deployment.yaml'
+        container('alpine') {
+          sh 'echo Running inside alpine container!'
+          sh 'apk add --no-cache curl'
+          sh 'curl https://ifconfig.me'
         }
       }
     }
