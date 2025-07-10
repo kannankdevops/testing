@@ -23,7 +23,8 @@ spec:
   }
 
   environment {
-    IMAGE = "kannankdevops/myapp:latest"
+    DOCKER_IMAGE = "kkaann/myapp:latest"
+    KUBE_NAMESPACE = "jenkins"
   }
 
   stages {
@@ -36,7 +37,7 @@ spec:
     stage('Build Docker Image') {
       steps {
         container('docker') {
-          sh 'docker build -t $IMAGE .'
+          sh 'docker build -t $DOCKER_IMAGE .'
         }
       }
     }
@@ -47,7 +48,7 @@ spec:
           withCredentials([usernamePassword(credentialsId: 'kkaann', usernameVariable: 'DOCKER_USER', passwordVariable: 'DOCKER_PASS')]) {
             sh '''
               echo "$DOCKER_PASS" | docker login -u "$DOCKER_USER" --password-stdin
-              docker push $IMAGE
+              docker push $DOCKER_IMAGE
             '''
           }
         }
@@ -57,10 +58,19 @@ spec:
     stage('Deploy to Kubernetes') {
       steps {
         container('docker') {
-          sh 'kubectl apply -f myapp-deployment.yaml -n jenkins'
-          sh 'kubectl apply -f myapp-service.yaml -n jenkins'
+          sh 'kubectl apply -f myapp-deployment.yaml -n $KUBE_NAMESPACE'
+          sh 'kubectl apply -f myapp-service.yaml -n $KUBE_NAMESPACE'
         }
       }
+    }
+  }
+
+  post {
+    success {
+      echo '✅ Pipeline succeeded!'
+    }
+    failure {
+      echo '❌ Pipeline failed!'
     }
   }
 }
