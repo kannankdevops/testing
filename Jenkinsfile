@@ -1,9 +1,13 @@
 pipeline {
-  agent any
+  agent {
+    kubernetes {
+      label 'kubectl'         // must match the label you gave in the pod template
+      defaultContainer 'kubectl'  // match the container name you defined
+    }
+  }
 
   environment {
-    // Inject your kubeconfig secret (from Jenkins credentials)
-    KUBECONFIG_FILE = credentials('kubeconfig-secret') // Set this to your Jenkins secret ID
+    KUBECONFIG = "/home/jenkins/.kube/kubeconfig"  // matches what you set in Env and Volume
   }
 
   stages {
@@ -15,21 +19,9 @@ pipeline {
 
     stage('🚀 Deploy to Kubernetes') {
       steps {
-        script {
-          // Use kubectl image and keep it alive during the step using tail
-          docker.image('bitnami/kubectl:1.30').inside('--entrypoint=tail -- tail -f /dev/null') {
-            withEnv(["KUBECONFIG=${KUBECONFIG_FILE}"]) {
-              // Optional sanity check
-              sh 'kubectl version --client'
-              
-              // Apply Kubernetes manifests
-              sh 'kubectl apply -f k8s-deploy.yaml'
-              
-              // (Optional) Check pod status
-              sh 'kubectl get pods -n your-namespace'
-            }
-          }
-        }
+        sh 'kubectl version --client'
+        sh 'kubectl apply -f k8s-deploy.yaml'
+        sh 'kubectl get pods -n your-namespace'
       }
     }
   }
