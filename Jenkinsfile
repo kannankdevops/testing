@@ -7,7 +7,7 @@ kind: Pod
 spec:
   containers:
   - name: docker
-    image: docker:24.0
+    image: kkaann/docker-kubectl:latest   # ✅ use your updated image
     command:
     - cat
     tty: true
@@ -23,7 +23,7 @@ spec:
   }
 
   environment {
-    DOCKER_IMAGE = "kkaann/myapp:latest"
+    IMAGE = "kkaann/myapp:latest"
     KUBE_NAMESPACE = "jenkins"
   }
 
@@ -37,7 +37,7 @@ spec:
     stage('Build Docker Image') {
       steps {
         container('docker') {
-          sh 'docker build -t $DOCKER_IMAGE .'
+          sh 'docker build -t $IMAGE .'
         }
       }
     }
@@ -48,7 +48,7 @@ spec:
           withCredentials([usernamePassword(credentialsId: 'kkaann', usernameVariable: 'DOCKER_USER', passwordVariable: 'DOCKER_PASS')]) {
             sh '''
               echo "$DOCKER_PASS" | docker login -u "$DOCKER_USER" --password-stdin
-              docker push $DOCKER_IMAGE
+              docker push $IMAGE
             '''
           }
         }
@@ -58,6 +58,7 @@ spec:
     stage('Deploy to Kubernetes') {
       steps {
         container('docker') {
+          sh 'kubectl version --client'  // ✅ Test kubectl works
           sh 'kubectl apply -f myapp-deployment.yaml -n $KUBE_NAMESPACE'
           sh 'kubectl apply -f myapp-service.yaml -n $KUBE_NAMESPACE'
         }
@@ -66,11 +67,11 @@ spec:
   }
 
   post {
-    success {
-      echo '✅ Pipeline succeeded!'
-    }
     failure {
-      echo '❌ Pipeline failed!'
+      echo "❌ Pipeline failed!"
+    }
+    success {
+      echo "✅ Deployment successful!"
     }
   }
 }
