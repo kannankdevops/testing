@@ -10,12 +10,5 @@ pipeline {
         }
       }
     }
-    stage('List nodes') {
-      steps {
-        container('kubectl') {
-          sh 'kubectl get nodes'
-        }
-      }
-    }
   }
 }
