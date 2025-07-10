@@ -1,37 +1,21 @@
 pipeline {
   agent {
-    kubernetes {
-      inheritFrom 'kubectl-agent'
-      defaultContainer 'kubectl'
-    }
+    label 'kubectl-agent'
   }
-
-  environment {
-    KUBECONFIG = "/home/jenkins/.kube/kubeconfig"
-  }
-
   stages {
-    stage('🛠️ Checkout Code') {
+    stage('Verify kubectl') {
       steps {
-        git url: 'https://github.com/kannankdevops/testing.git', branch: 'main'
+        container('kubectl') {
+          sh 'kubectl version --client'
+        }
       }
     }
-
-    stage('🚀 Deploy to Kubernetes') {
+    stage('List nodes') {
       steps {
-        sh 'kubectl version --client'
-        sh 'kubectl apply -f k8s-deploy.yaml'
-        sh 'kubectl get pods -n jenkins'
+        container('kubectl') {
+          sh 'kubectl get nodes'
+        }
       }
-    }
-  }
-
-  post {
-    always {
-      echo '✅ Pipeline completed.'
-    }
-    failure {
-      echo '❌ Deployment failed.'
     }
   }
 }
