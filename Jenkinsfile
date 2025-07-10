@@ -44,9 +44,9 @@ spec:
     stage('Push to DockerHub') {
       steps {
         container('docker') {
-          withCredentials([usernamePassword(credentialsId: 'dockerhub', usernameVariable: 'USER', passwordVariable: 'PASS')]) {
+          withCredentials([usernamePassword(credentialsId: 'kkaann', usernameVariable: 'DOCKER_USER', passwordVariable: 'DOCKER_PASS')]) {
             sh '''
-              echo "$PASS" | docker login -u "$USER" --password-stdin
+              echo "$DOCKER_PASS" | docker login -u "$DOCKER_USER" --password-stdin
               docker push $IMAGE
             '''
           }
