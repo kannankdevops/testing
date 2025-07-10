@@ -1,13 +1,13 @@
 pipeline {
   agent {
     kubernetes {
-      inheritFrom 'kubectl-agent'         // This must match the Pod Template name in Jenkins UI
-      defaultContainer 'kubectl'          // This is the container name inside your pod template
+      inheritFrom 'kubectl-agent'         // Must match your Pod Template name in Jenkins
+      defaultContainer 'kubectl'          // Must match container name in Pod Template
     }
   }
 
   environment {
-    // KUBECONFIG must match the secret mount path in pod template
+    // Must match the mount path from Secret volume in Pod Template
     KUBECONFIG = "/home/jenkins/.kube/kubeconfig"
   }
 
@@ -22,7 +22,7 @@ pipeline {
 
     stage('🔍 Kubeconfig Sanity Check') {
       steps {
-        echo "🔍 Verifying kubectl access..."
+        echo "🔍 Verifying kubectl setup..."
         sh 'kubectl version --client'
         sh 'kubectl config get-contexts'
       }
@@ -37,8 +37,8 @@ pipeline {
 
     stage('📦 Verify Deployment') {
       steps {
-        echo "📦 Verifying pod status..."
-        sh 'kubectl get pods -n your-namespace' // Replace with actual namespace
+        echo "📦 Getting pod status..."
+        sh 'kubectl get pods -n default'  // Replace with your real namespace
       }
     }
 
