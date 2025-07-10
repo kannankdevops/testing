@@ -27,15 +27,13 @@ pipeline {
     stage('🚀 Deploy to Kubernetes') {
       steps {
         withCredentials([file(credentialsId: 'kubeconfig', variable: 'KUBECONFIG_FILE')]) {
-          script {
-            docker.image('bitnami/kubectl:1.30').inside('--entrypoint=sh') {
-              sh '''
-                export KUBECONFIG=$KUBECONFIG_FILE
-                echo "Deploying to Kubernetes..."
-                kubectl apply -f k8s-deploy/myapp-deployment.yaml
-                kubectl apply -f k8s-deploy/myapp-service.yaml
-              '''
-            }
+          withDockerContainer(image: 'bitnami/kubectl:1.30', args: '-i --entrypoint=sh') {
+            sh '''
+              export KUBECONFIG=$KUBECONFIG_FILE
+              echo "Deploying to Kubernetes..."
+              kubectl apply -f k8s-deploy/myapp-deployment.yaml
+              kubectl apply -f k8s-deploy/myapp-service.yaml
+            '''
           }
         }
       }
@@ -44,15 +42,13 @@ pipeline {
     stage('🔍 Optional Sanity Check') {
       steps {
         withCredentials([file(credentialsId: 'kubeconfig', variable: 'KUBECONFIG_FILE')]) {
-          script {
-            docker.image('bitnami/kubectl:1.30').inside('--entrypoint=sh') {
-              sh '''
-                export KUBECONFIG=$KUBECONFIG_FILE
-                echo "Waiting 10s before checking pod status..."
-                sleep 10
-                kubectl get pods -n default
-              '''
-            }
+          withDockerContainer(image: 'bitnami/kubectl:1.30', args: '-i --entrypoint=sh') {
+            sh '''
+              export KUBECONFIG=$KUBECONFIG_FILE
+              echo "Waiting 10s before checking pod status..."
+              sleep 10
+              kubectl get pods -n default
+            '''
           }
         }
       }
