@@ -1,15 +1,19 @@
 pipeline {
   agent {
     kubernetes {
+      label 'myapp-agent'
       yaml """
 apiVersion: v1
 kind: Pod
 spec:
   containers:
+  - name: kubectl
+    image: kkaann/docker-kubectl:latest
+    command: ['cat']
+    tty: true
   - name: docker
-    image: kkaann/docker-kubectl:latest   # ✅ use your updated image
-    command:
-    - cat
+    image: docker:24.0
+    command: ['cat']
     tty: true
     volumeMounts:
     - name: docker-sock
@@ -23,55 +27,32 @@ spec:
   }
 
   environment {
-    IMAGE = "kkaann/myapp:latest"
-    KUBE_NAMESPACE = "jenkins"
+    DOCKER_IMAGE = "kkaann/myapp:latest"
   }
 
   stages {
     stage('Checkout') {
       steps {
-        checkout scm
+        git 'https://github.com/kannankdevops/k8s-deploy.git'
       }
     }
 
-    stage('Build Docker Image') {
+    stage('Build & Push Docker Image') {
       steps {
         container('docker') {
-          sh 'docker build -t $IMAGE .'
-        }
-      }
-    }
-
-    stage('Push to DockerHub') {
-      steps {
-        container('docker') {
-          withCredentials([usernamePassword(credentialsId: 'kkaann', usernameVariable: 'DOCKER_USER', passwordVariable: 'DOCKER_PASS')]) {
-            sh '''
-              echo "$DOCKER_PASS" | docker login -u "$DOCKER_USER" --password-stdin
-              docker push $IMAGE
-            '''
-          }
+          sh 'docker build -t $DOCKER_IMAGE .'
+          sh 'docker push $DOCKER_IMAGE'
         }
       }
     }
 
     stage('Deploy to Kubernetes') {
       steps {
-        container('docker') {
-          sh 'kubectl version --client'  // ✅ Test kubectl works
-          sh 'kubectl apply -f myapp-deployment.yaml -n $KUBE_NAMESPACE'
-          sh 'kubectl apply -f myapp-service.yaml -n $KUBE_NAMESPACE'
+        container('kubectl') {
+          sh 'kubectl apply -f myapp-deployment.yaml -n jenkins'
+          sh 'kubectl apply -f myapp-service.yaml -n jenkins'
         }
       }
-    }
-  }
-
-  post {
-    failure {
-      echo "❌ Pipeline failed!"
-    }
-    success {
-      echo "✅ Deployment successful!"
     }
   }
 }
