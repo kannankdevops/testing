@@ -33,7 +33,7 @@ spec:
   stages {
     stage('Checkout') {
       steps {
-        git 'https://github.com/kannankdevops/k8s-deploy.git'
+        git 'https://github.com/kannankdevops/testing.git'
       }
     }
 
