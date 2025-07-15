@@ -1,55 +1,51 @@
 pipeline {
   agent {
     kubernetes {
+      label 'myapp-agent'
       yaml """
 apiVersion: v1
 kind: Pod
 spec:
   containers:
-  - name: docker
-    image: kkaann/docker-kubectl:latest   # ✅ use your updated image
-    command:
-    - cat
-    tty: true
-    volumeMounts:
-    - name: docker-sock
-      mountPath: /var/run/docker.sock
+    - name: kubectl
+      image: kkaann/docker-kubectl:latest
+      command: ['cat']
+      tty: true
+    - name: docker
+      image: docker:24.0
+      command: ['cat']
+      tty: true
+      volumeMounts:
+        - name: docker-sock
+          mountPath: /var/run/docker.sock
   volumes:
-  - name: docker-sock
-    hostPath:
-      path: /var/run/docker.sock
+    - name: docker-sock
+      hostPath:
+        path: /var/run/docker.sock
 """
     }
   }
 
   environment {
-    IMAGE = "kkaann/myapp:latest"
-    KUBE_NAMESPACE = "jenkins"
+    DOCKER_IMAGE = "kkaann/myapp:latest"
   }
 
   stages {
     stage('Checkout') {
       steps {
-        checkout scm
+        git branch: 'main',
+            url: 'https://github.com/kannankdevops/testing.git'
       }
     }
 
-    stage('Build Docker Image') {
+    stage('Build & Push Docker Image') {
       steps {
         container('docker') {
-          sh 'docker build -t $IMAGE .'
-        }
-      }
-    }
-
-    stage('Push to DockerHub') {
-      steps {
-        container('docker') {
+          // 🔐 Login to DockerHub using existing Jenkins credentials (ID: kkaann)
           withCredentials([usernamePassword(credentialsId: 'kkaann', usernameVariable: 'DOCKER_USER', passwordVariable: 'DOCKER_PASS')]) {
-            sh '''
-              echo "$DOCKER_PASS" | docker login -u "$DOCKER_USER" --password-stdin
-              docker push $IMAGE
-            '''
+            sh 'echo $DOCKER_PASS | docker login -u $DOCKER_USER --password-stdin'
+            sh 'docker build -t $DOCKER_IMAGE .'
+            sh 'docker push $DOCKER_IMAGE'
           }
         }
       }
@@ -57,21 +53,11 @@ spec:
 
     stage('Deploy to Kubernetes') {
       steps {
-        container('docker') {
-          sh 'kubectl version --client'  // ✅ Test kubectl works
-          sh 'kubectl apply -f myapp-deployment.yaml -n $KUBE_NAMESPACE'
-          sh 'kubectl apply -f myapp-service.yaml -n $KUBE_NAMESPACE'
+        container('kubectl') {
+          sh 'kubectl apply -f myapp-deployment.yaml -n jenkins'
+          sh 'kubectl apply -f myapp-service.yaml -n jenkins'
         }
       }
-    }
-  }
-
-  post {
-    failure {
-      echo "❌ Pipeline failed!"
-    }
-    success {
-      echo "✅ Deployment successful!"
     }
   }
 }
