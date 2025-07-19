@@ -37,8 +37,7 @@ spec:
   stages {
     stage('Checkout') {
       steps {
-        git branch: 'main',
-            url: 'https://github.com/kannankdevops/testing.git'
+        git branch: 'main', url: 'https://github.com/kannankdevops/testing.git'
       }
     }
 
@@ -61,6 +60,12 @@ spec:
           sh 'kubectl apply -f myapp-service.yaml -n jenkins'
         }
       }
+    }
+  }
+
+  post {
+    always {
+      cleanWs()
     }
   }
 }
