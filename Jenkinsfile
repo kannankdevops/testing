@@ -7,10 +7,6 @@ apiVersion: v1
 kind: Pod
 spec:
   containers:
-    - name: kubectl
-      image: kkaann/docker-kubectl:latest
-      command: ['cat']
-      tty: true
     - name: docker
       image: docker:24.0
       command: ['cat']
@@ -18,6 +14,10 @@ spec:
       volumeMounts:
         - name: docker-sock
           mountPath: /var/run/docker.sock
+    - name: kubectl
+      image: bitnami/kubectl:latest
+      command: ['cat']
+      tty: true
   volumes:
     - name: docker-sock
       hostPath:
@@ -56,14 +56,22 @@ spec:
     stage('Deploy to Kubernetes') {
       steps {
         container('kubectl') {
-          sh 'kubectl apply -f myapp-deployment.yaml -n jenkins'
-          sh 'kubectl apply -f myapp-service.yaml -n jenkins'
+          sh 'kubectl apply -f k8s/myapp-configmap.yaml -n jenkins'
+          sh 'kubectl apply -f k8s/myapp-deployment.yaml -n jenkins'
+          sh 'kubectl apply -f k8s/myapp-service.yaml -n jenkins'
+          sh 'kubectl apply -f k8s/myapp-ingress.yaml -n jenkins'
         }
       }
     }
   }
 
   post {
+    success {
+      echo "✅ Deployment complete"
+    }
+    failure {
+      echo "❌ Deployment failed"
+    }
     always {
       cleanWs()
     }
