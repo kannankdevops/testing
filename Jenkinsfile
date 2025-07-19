@@ -30,6 +30,10 @@ spec:
     DOCKER_IMAGE = "kkaann/myapp:latest"
   }
 
+  triggers {
+    githubPush()
+  }
+
   stages {
     stage('Checkout') {
       steps {
@@ -41,7 +45,6 @@ spec:
     stage('Build & Push Docker Image') {
       steps {
         container('docker') {
-          // 🔐 Login to DockerHub using existing Jenkins credentials (ID: kkaann)
           withCredentials([usernamePassword(credentialsId: 'kkaann', usernameVariable: 'DOCKER_USER', passwordVariable: 'DOCKER_PASS')]) {
             sh 'echo $DOCKER_PASS | docker login -u $DOCKER_USER --password-stdin'
             sh 'docker build -t $DOCKER_IMAGE .'
