@@ -31,7 +31,7 @@ spec:
   }
 
   triggers {
-    githubPush()
+    githubPush()  // Make sure webhook is configured correctly in GitHub
   }
 
   stages {
@@ -56,10 +56,15 @@ spec:
     stage('Deploy to Kubernetes') {
       steps {
         container('kubectl') {
-          sh 'kubectl apply -f k8s/myapp-configmap.yaml -n jenkins'
-          sh 'kubectl apply -f k8s/myapp-deployment.yaml -n jenkins'
-          sh 'kubectl apply -f k8s/myapp-service.yaml -n jenkins'
-          sh 'kubectl apply -f k8s/myapp-ingress.yaml -n jenkins'
+          // Optional: Validate kubectl context
+          sh 'kubectl version --client'
+          sh 'kubectl config get-contexts'
+
+          // Updated paths: all YAMLs are in repo root
+          sh 'kubectl apply -f myapp-configmap.yaml -n jenkins'
+          sh 'kubectl apply -f myapp-deployment.yaml -n jenkins'
+          sh 'kubectl apply -f myapp-service.yaml -n jenkins'
+          sh 'kubectl apply -f myapp-ingress.yaml -n jenkins'
         }
       }
     }
