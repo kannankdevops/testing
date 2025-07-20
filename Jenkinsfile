@@ -48,7 +48,6 @@ spec:
     DOCKER_IMAGE = "kkaann/myapp"
     DOCKER_TAG = "${env.BUILD_NUMBER}"
     DOCKER_CREDENTIALS_ID = 'dockerhub-creds'
-    KUBECONFIG_FILE = credentials('kubeconfig')
     K8S_NAMESPACE = "jenkins"
   }
 
@@ -87,7 +86,7 @@ spec:
       steps {
         container('docker') {
           withCredentials([usernamePassword(
-            credentialsId: "$DOCKER_CREDENTIALS_ID",
+            credentialsId: "${DOCKER_CREDENTIALS_ID}",
             usernameVariable: 'DOCKER_USER',
             passwordVariable: 'DOCKER_PASS'
           )]) {
@@ -104,40 +103,40 @@ spec:
     stage('🚀 Deploy to Kubernetes') {
       steps {
         container('kubectl') {
-          withEnv(["KUBECONFIG=$KUBECONFIG_FILE"]) {
+          withCredentials([file(credentialsId: 'kubeconfig', variable: 'KUBECONFIG')]) {
             sh '''
-              echo "🔍 DEBUG: Current User: $(whoami)"
-              echo "🔍 DEBUG: Current Directory: $(pwd)"
-              echo "🔍 DEBUG: List Files:"
+              echo "🔍 Current user: $(whoami)"
+              echo "🔍 Directory: $(pwd)"
+              echo "🔍 Files:"
               ls -alh
 
-              echo "🔍 DEBUG: Check if KUBECONFIG exists and is readable"
+              echo "🔍 Checking KUBECONFIG at $KUBECONFIG"
               if [ ! -f "$KUBECONFIG" ]; then
-                echo "❌ KUBECONFIG file not found at $KUBECONFIG"
+                echo "❌ KUBECONFIG not found"
                 exit 1
               fi
 
-              echo "🔍 DEBUG: Show Kubernetes Context"
+              echo "🔍 Kubernetes context:"
               kubectl config current-context || exit 1
 
-              echo "📄 Applying Kubernetes Manifests..."
+              echo "📄 Applying manifests"
               for file in *.yaml; do
-                echo "📄 Applying $file..."
+                echo "📄 Applying $file"
                 kubectl apply -f "$file" -n $K8S_NAMESPACE || exit 1
               done
 
-              echo "⏳ Waiting for Deployment Rollout..."
+              echo "⏳ Waiting for rollout..."
               kubectl rollout status deployment/myapp -n $K8S_NAMESPACE || exit 1
             '''
           }
         }
       }
     }
-  } // ✅ Corrected closing brace here!
+  }
 
   post {
     success {
-      echo "✅ Deployment of $DOCKER_IMAGE:$DOCKER_TAG completed successfully!"
+      echo "✅ Deployment of ${DOCKER_IMAGE}:${DOCKER_TAG} completed successfully!"
     }
     failure {
       echo "❌ Pipeline failed. Please check the logs above."
