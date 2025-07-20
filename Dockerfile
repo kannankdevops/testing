@@ -1,5 +1,13 @@
-FROM python:3.9-slim
-WORKDIR /usr/src/app
-COPY index.html /usr/src/app/index.html
-CMD ["python3", "-m", "http.server", "8080"]
-EXPOSE 8080
+# Stage 1 - Build
+FROM node:16-alpine AS builder
+WORKDIR /app
+COPY package*.json ./
+RUN npm install
+COPY . .
+RUN npm run build
+
+# Stage 2 - Serve
+FROM nginx:alpine
+COPY --from=builder /app/dist /usr/share/nginx/html
+EXPOSE 80
+CMD ["nginx", "-g", "daemon off;"]
