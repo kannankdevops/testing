@@ -6,9 +6,6 @@ pipeline {
       yaml """
 apiVersion: v1
 kind: Pod
-metadata:
-  labels:
-    some-label: myapp-agent
 spec:
   containers:
     - name: docker
@@ -20,18 +17,21 @@ spec:
       volumeMounts:
         - name: docker-sock
           mountPath: /var/run/docker.sock
+
     - name: kubectl
-      image: lachlanevenson/k8s-kubectl:v1.27.1
+      image: bitnami/kubectl:1.27.1-debian-11-r0
       command: ['cat']
       tty: true
       volumeMounts:
         - name: kubeconfig
           mountPath: /root/.kube
+
   volumes:
     - name: docker-sock
       hostPath:
         path: /var/run/docker.sock
         type: Socket
+
     - name: kubeconfig
       hostPath:
         path: /root/.kube
@@ -42,24 +42,38 @@ spec:
 
   environment {
     DOCKER_IMAGE = "kkaann/myapp:latest"
-    K8S_NAMESPACE = "jenkins"
     KUBECONFIG = "/root/.kube/config"
+    K8S_NAMESPACE = "jenkins"
+  }
+
+  triggers {
+    githubPush()
   }
 
   stages {
-    stage('Checkout') {
+    stage('📥 Checkout Code') {
       steps {
         git branch: 'main', url: 'https://github.com/kannankdevops/testing.git'
       }
     }
 
-    stage('Build & Push Docker Image') {
+    stage('🐳 Build & Push Docker Image') {
       steps {
         container('docker') {
-          withCredentials([usernamePassword(credentialsId: 'kkaann', usernameVariable: 'DOCKER_USER', passwordVariable: 'DOCKER_PASS')]) {
+          withCredentials([usernamePassword(
+            credentialsId: 'kkaann',
+            usernameVariable: 'DOCKER_USER',
+            passwordVariable: 'DOCKER_PASS'
+          )]) {
             sh '''
+              echo "🔐 Logging in to DockerHub..."
               echo $DOCKER_PASS | docker login -u $DOCKER_USER --password-stdin
+
+              echo "🔧 Building Docker image with BuildKit..."
+              export DOCKER_BUILDKIT=1
               docker build -t $DOCKER_IMAGE .
+
+              echo "📤 Pushing image to DockerHub..."
               docker push $DOCKER_IMAGE
             '''
           }
@@ -67,16 +81,28 @@ spec:
       }
     }
 
-    stage('Deploy to Kubernetes') {
+    stage('🚀 Deploy to Kubernetes') {
       steps {
         container('kubectl') {
-          sh '''
-            echo "🚀 Deploying to Kubernetes"
-            kubectl apply -f myapp-configmap.yaml -n $K8S_NAMESPACE
-            kubectl apply -f myapp-deployment.yaml -n $K8S_NAMESPACE
-            kubectl apply -f myapp-service.yaml -n $K8S_NAMESPACE
-            kubectl apply -f myapp-ingress.yaml -n $K8S_NAMESPACE
-          '''
+          script {
+            def manifestFiles = [
+              'myapp-configmap.yaml',
+              'myapp-deployment.yaml',
+              'myapp-service.yaml',
+              'myapp-ingress.yaml'
+            ]
+
+            for (file in manifestFiles) {
+              try {
+                sh """
+                  echo "📄 Applying $file..."
+                  kubectl apply -f $file -n $K8S_NAMESPACE
+                """
+              } catch (Exception e) {
+                error "❌ Failed to apply $file: ${e.getMessage()}"
+              }
+            }
+          }
         }
       }
     }
@@ -87,10 +113,17 @@ spec:
       echo "✅ Deployment completed successfully."
     }
     failure {
-      echo "❌ Deployment failed! Check logs above."
+      echo "❌ Deployment failed. Check above for specific manifest errors."
     }
     always {
-      cleanWs()
+      script {
+        try {
+          echo "🧹 Cleaning up workspace..."
+          cleanWs()
+        } catch (err) {
+          echo "⚠️ Failed to clean workspace: ${err.message}"
+        }
+      }
     }
   }
 }
