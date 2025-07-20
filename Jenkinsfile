@@ -22,7 +22,7 @@ spec:
           mountPath: /var/run/docker.sock
 
     - name: kubectl
-      image: bitnami/kubectl:1.29
+      image: kkaann/kubectl:1.30.1
       command: ['cat']
       tty: true
       volumeMounts:
@@ -44,6 +44,7 @@ spec:
 
   environment {
     DOCKER_IMAGE = "kkaann/myapp"
+    KUBECTL_IMAGE = "kkaann/kubectl:1.30.1"
     TAG = "latest"
     IMAGE_NAME = "${DOCKER_IMAGE}:${TAG}"
     K8S_NAMESPACE = "jenkins"
@@ -62,11 +63,23 @@ spec:
       }
     }
 
-    stage('🐳 Build & Push Docker Image') {
+    stage('⚙️ Build Custom kubectl Image') {
+      steps {
+        container('docker') {
+          sh '''
+            echo "🔨 Building kubectl image..."
+            docker build -t ${KUBECTL_IMAGE} -f Dockerfile.kubectl .
+            docker push ${KUBECTL_IMAGE}
+          '''
+        }
+      }
+    }
+
+    stage('🐳 Build & Push App Image') {
       steps {
         container('docker') {
           withCredentials([usernamePassword(
-            credentialsId: 'kkaann', // DockerHub credentials ID
+            credentialsId: 'kkaann',
             usernameVariable: 'DOCKER_USER',
             passwordVariable: 'DOCKER_PASS'
           )]) {
@@ -74,11 +87,11 @@ spec:
               echo "🔐 Logging into DockerHub..."
               echo "$DOCKER_PASS" | docker login -u "$DOCKER_USER" --password-stdin
 
-              echo "🔧 Building Docker image with BuildKit..."
+              echo "🔧 Building Docker image..."
               export DOCKER_BUILDKIT=1
               docker build -t $IMAGE_NAME .
 
-              echo "📤 Pushing image to DockerHub..."
+              echo "📤 Pushing image..."
               docker push $IMAGE_NAME
             '''
           }
@@ -100,7 +113,7 @@ spec:
             for (file in manifests) {
               try {
                 sh """
-                  echo "📄 Applying manifest: ${file}"
+                  echo "📄 Applying ${file}..."
                   kubectl apply -f ${file} -n $K8S_NAMESPACE
                 """
               } catch (Exception e) {
@@ -109,9 +122,9 @@ spec:
             }
 
             sh '''
-              echo "🔍 Verifying deployment status..."
+              echo "🔍 Waiting for deployment rollout..."
               kubectl rollout status deployment/myapp -n $K8S_NAMESPACE --timeout=60s || {
-                echo "⚠️ Rollout failed. Debug info below:"
+                echo "⚠️ Rollout failed. Debug info:"
                 kubectl get all -n $K8S_NAMESPACE
                 kubectl describe deployment myapp -n $K8S_NAMESPACE || true
                 exit 1
@@ -125,14 +138,14 @@ spec:
 
   post {
     success {
-      echo "✅ Pipeline completed successfully. ${IMAGE_NAME} is deployed to Kubernetes."
+      echo "✅ Deployment successful: ${IMAGE_NAME} is live in Kubernetes!"
     }
     failure {
-      echo "❌ Pipeline failed. Please check the logs above for details."
+      echo "❌ Deployment failed. Please check error logs."
     }
     always {
       cleanWs()
-      echo '🧹 Workspace cleaned.'
+      echo '🧹 Cleaned up workspace.'
     }
   }
 }
