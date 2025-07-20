@@ -7,6 +7,7 @@ spec:
   selector:
     app: myapp
   ports:
-    - port: 80
-      targetPort: 8080
+    - protocol: TCP
+      port: 80
+      targetPort: 3000  # ✅ FIXED to match container port
   type: ClusterIP
