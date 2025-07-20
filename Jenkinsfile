@@ -6,12 +6,17 @@ pipeline {
       yaml """
 apiVersion: v1
 kind: Pod
+metadata:
+  labels:
+    some-label: myapp-agent
 spec:
   containers:
     - name: docker
       image: docker:24.0
       command: ['cat']
       tty: true
+      securityContext:
+        privileged: true
       volumeMounts:
         - name: docker-sock
           mountPath: /var/run/docker.sock
@@ -26,9 +31,11 @@ spec:
     - name: docker-sock
       hostPath:
         path: /var/run/docker.sock
+        type: Socket
     - name: kubeconfig
       hostPath:
         path: /root/.kube
+        type: Directory
 """
     }
   }
