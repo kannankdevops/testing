@@ -41,17 +41,11 @@ spec:
   }
 
   environment {
-    DOCKER_IMAGE = "kkaann/myapp:latest"
-    KUBECONFIG = "/root/.kube/config"
+    IMAGE_NAME = "kkaann/myapp:latest"
     K8S_NAMESPACE = "jenkins"
   }
 
-  triggers {
-    githubPush()
-  }
-
   stages {
-
     stage('📥 Checkout Code') {
       steps {
         git branch: 'main', url: 'https://github.com/kannankdevops/testing.git'
@@ -67,15 +61,10 @@ spec:
             passwordVariable: 'DOCKER_PASS'
           )]) {
             sh '''
-              echo "🔐 Logging in to DockerHub..."
               echo "$DOCKER_PASS" | docker login -u "$DOCKER_USER" --password-stdin
-
-              echo "🔧 Building Docker image..."
               export DOCKER_BUILDKIT=1
-              docker build -t $DOCKER_IMAGE .
-
-              echo "📤 Pushing image to DockerHub..."
-              docker push $DOCKER_IMAGE
+              docker build -t $IMAGE_NAME .
+              docker push $IMAGE_NAME
             '''
           }
         }
@@ -85,16 +74,18 @@ spec:
     stage('🚀 Deploy to Kubernetes') {
       steps {
         container('kubectl') {
-          script {
-            def manifestFiles = sh(
-              script: "ls *.yaml",
-              returnStdout: true
-            ).trim().split("\\n")
-
-            for (file in manifestFiles) {
-              echo "📄 Applying ${file}..."
-              sh "kubectl apply -f ${file} -n $K8S_NAMESPACE"
-            }
+          withCredentials([file(credentialsId: 'kubeconfig', variable: 'KUBECONFIG_FILE')]) {
+            sh '''
+              mkdir -p ~/.kube
+              cp $KUBECONFIG_FILE ~/.kube/config
+              chmod 600 ~/.kube/config
+              echo "📄 Applying all YAML manifests..."
+              for file in *.yaml; do
+                echo "📄 Applying $file"
+                kubectl apply -f "$file" -n jenkins
+              done
+              kubectl rollout status deployment/myapp -n jenkins
+            '''
           }
         }
       }
@@ -106,17 +97,10 @@ spec:
       echo "✅ Deployment completed successfully."
     }
     failure {
-      echo "❌ Deployment failed. Check logs for errors."
+      echo "❌ Deployment failed. Please check logs."
     }
     always {
-      script {
-        try {
-          echo "🧹 Cleaning up workspace..."
-          cleanWs()
-        } catch (err) {
-          echo "⚠️ Failed to clean workspace: ${err.message}"
-        }
-      }
+      cleanWs()
     }
   }
 }
