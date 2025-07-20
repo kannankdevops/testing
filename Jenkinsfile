@@ -51,6 +51,7 @@ spec:
   }
 
   stages {
+
     stage('📥 Checkout Code') {
       steps {
         git branch: 'main', url: 'https://github.com/kannankdevops/testing.git'
@@ -61,7 +62,7 @@ spec:
       steps {
         container('docker') {
           withCredentials([usernamePassword(
-            credentialsId: 'dockerhub-creds', // ✅ Ensure this ID exists in Jenkins
+            credentialsId: 'dockerhub-creds',
             usernameVariable: 'DOCKER_USER',
             passwordVariable: 'DOCKER_PASS'
           )]) {
@@ -69,7 +70,7 @@ spec:
               echo "🔐 Logging in to DockerHub..."
               echo "$DOCKER_PASS" | docker login -u "$DOCKER_USER" --password-stdin
 
-              echo "🔧 Building Docker image with BuildKit..."
+              echo "🔧 Building Docker image..."
               export DOCKER_BUILDKIT=1
               docker build -t $DOCKER_IMAGE .
 
@@ -105,7 +106,7 @@ spec:
       echo "✅ Deployment completed successfully."
     }
     failure {
-      echo "❌ Deployment failed. Check above for specific manifest errors."
+      echo "❌ Deployment failed. Check logs for errors."
     }
     always {
       script {
