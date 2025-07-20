@@ -16,13 +16,19 @@ spec:
         - name: docker-sock
           mountPath: /var/run/docker.sock
     - name: kubectl
-      image: bitnami/kubectl:1.27.1-debian-11-r0
+      image: lachlanevenson/k8s-kubectl:v1.27.1
       command: ['cat']
       tty: true
+      volumeMounts:
+        - name: kubeconfig
+          mountPath: /root/.kube
   volumes:
     - name: docker-sock
       hostPath:
         path: /var/run/docker.sock
+    - name: kubeconfig
+      hostPath:
+        path: /root/.kube
 """
     }
   }
@@ -30,10 +36,7 @@ spec:
   environment {
     DOCKER_IMAGE = "kkaann/myapp:latest"
     K8S_NAMESPACE = "jenkins"
-  }
-
-  triggers {
-    githubPush()
+    KUBECONFIG = "/root/.kube/config"
   }
 
   stages {
@@ -49,7 +52,6 @@ spec:
           withCredentials([usernamePassword(credentialsId: 'kkaann', usernameVariable: 'DOCKER_USER', passwordVariable: 'DOCKER_PASS')]) {
             sh '''
               echo $DOCKER_PASS | docker login -u $DOCKER_USER --password-stdin
-              export DOCKER_BUILDKIT=1
               docker build -t $DOCKER_IMAGE .
               docker push $DOCKER_IMAGE
             '''
@@ -62,9 +64,6 @@ spec:
       steps {
         container('kubectl') {
           sh '''
-            echo "🔍 Setting Kube Context"
-            kubectl config use-context docker-desktop || true
-
             echo "🚀 Deploying to Kubernetes"
             kubectl apply -f myapp-configmap.yaml -n $K8S_NAMESPACE
             kubectl apply -f myapp-deployment.yaml -n $K8S_NAMESPACE
@@ -84,13 +83,7 @@ spec:
       echo "❌ Deployment failed! Check logs above."
     }
     always {
-      script {
-        try {
-          cleanWs()
-        } catch (Exception e) {
-          echo "⚠️ Workspace cleanup failed: ${e.message}"
-        }
-      }
+      cleanWs()
     }
   }
 }
