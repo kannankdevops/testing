@@ -5,3 +5,4 @@ metadata:
   namespace: jenkins
 data:
   APP_MESSAGE: "Hello from ConfigMap!"
+

@@ -6,6 +6,7 @@ metadata:
   annotations:
     nginx.ingress.kubernetes.io/rewrite-target: /
 spec:
+  ingressClassName: nginx   # ✅ Explicitly tells K8s to use nginx ingress controller
   rules:
     - host: myapp.local
       http:

@@ -3,6 +3,8 @@ kind: Deployment
 metadata:
   name: myapp
   namespace: jenkins
+  labels:
+    app: myapp
 spec:
   replicas: 1
   selector:

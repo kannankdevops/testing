@@ -62,7 +62,7 @@ spec:
       }
     }
 
-    stage('🐳 Build & Push App Image') {
+    stage('🐳 Build & Push Docker Image') {
       steps {
         container('docker') {
           withCredentials([usernamePassword(
@@ -78,7 +78,7 @@ spec:
               export DOCKER_BUILDKIT=1
               docker build -t $IMAGE_NAME .
 
-              echo "📤 Pushing image..."
+              echo "📤 Pushing Docker image..."
               docker push $IMAGE_NAME
             '''
           }
@@ -86,7 +86,7 @@ spec:
       }
     }
 
-    stage('🚀 Deploy to Kubernetes') {
+    stage('🚀 Apply Kubernetes Manifests') {
       steps {
         container('kubectl') {
           script {
@@ -98,22 +98,14 @@ spec:
             ]
 
             for (file in manifests) {
-              try {
-                sh """
-                  echo "📄 Applying ${file}..."
-                  kubectl apply -f ${file} -n $K8S_NAMESPACE
-                """
-              } catch (Exception e) {
-                error "❌ Failed to apply ${file}: ${e.getMessage()}"
-              }
+              sh "echo '📄 Applying ${file}...' && kubectl apply -f ${file} -n ${K8S_NAMESPACE}"
             }
 
             sh '''
-              echo "🔍 Waiting for deployment rollout..."
-              kubectl rollout status deployment/myapp -n $K8S_NAMESPACE --timeout=60s || {
-                echo "⚠️ Rollout failed. Debug info:"
-                kubectl get all -n $K8S_NAMESPACE
-                kubectl describe deployment myapp -n $K8S_NAMESPACE || true
+              echo "🔍 Checking rollout..."
+              kubectl rollout status deployment/myapp -n ${K8S_NAMESPACE} --timeout=60s || {
+                echo "⚠️ Rollout failed. Debugging info:"
+                kubectl describe deployment myapp -n ${K8S_NAMESPACE}
                 exit 1
               }
             '''
@@ -125,14 +117,14 @@ spec:
 
   post {
     success {
-      echo "✅ Deployment successful: ${IMAGE_NAME} is live in Kubernetes!"
+      echo "✅ Application deployed: ${IMAGE_NAME}"
     }
     failure {
-      echo "❌ Deployment failed. Please check error logs."
+      echo "❌ Deployment failed. See logs for details."
     }
     always {
       cleanWs()
-      echo '🧹 Cleaned up workspace.'
+      echo "🧹 Workspace cleaned."
     }
   }
 }
