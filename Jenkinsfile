@@ -48,7 +48,7 @@ spec:
     DOCKER_IMAGE = "kkaann/myapp"
     DOCKER_TAG = "${env.BUILD_NUMBER}"
     DOCKER_CREDENTIALS_ID = 'dockerhub-creds'
-    KUBECONFIG_FILE = credentials('kubeconfig') // You must define this in Jenkins
+    KUBECONFIG_FILE = credentials('kubeconfig')
     K8S_NAMESPACE = "jenkins"
   }
 
@@ -101,39 +101,39 @@ spec:
       }
     }
 
-stage('🚀 Deploy to Kubernetes') {
-  steps {
-    container('kubectl') {
-      withEnv(["KUBECONFIG=$KUBECONFIG_FILE"]) {
-        sh '''
-          echo "🔍 DEBUG: Current User: $(whoami)"
-          echo "🔍 DEBUG: Current Directory: $(pwd)"
-          echo "🔍 DEBUG: List Files:"
-          ls -alh
+    stage('🚀 Deploy to Kubernetes') {
+      steps {
+        container('kubectl') {
+          withEnv(["KUBECONFIG=$KUBECONFIG_FILE"]) {
+            sh '''
+              echo "🔍 DEBUG: Current User: $(whoami)"
+              echo "🔍 DEBUG: Current Directory: $(pwd)"
+              echo "🔍 DEBUG: List Files:"
+              ls -alh
 
-          echo "🔍 DEBUG: Check if KUBECONFIG exists and is readable"
-          if [ ! -f "$KUBECONFIG" ]; then
-            echo "❌ KUBECONFIG file not found at $KUBECONFIG"
-            exit 1
-          fi
+              echo "🔍 DEBUG: Check if KUBECONFIG exists and is readable"
+              if [ ! -f "$KUBECONFIG" ]; then
+                echo "❌ KUBECONFIG file not found at $KUBECONFIG"
+                exit 1
+              fi
 
-          echo "🔍 DEBUG: Show Kubernetes Context"
-          kubectl config current-context || exit 1
+              echo "🔍 DEBUG: Show Kubernetes Context"
+              kubectl config current-context || exit 1
 
-          echo "📄 Applying Kubernetes Manifests..."
-          for file in *.yaml; do
-            echo "📄 Applying $file..."
-            kubectl apply -f "$file" -n $K8S_NAMESPACE || exit 1
-          done
+              echo "📄 Applying Kubernetes Manifests..."
+              for file in *.yaml; do
+                echo "📄 Applying $file..."
+                kubectl apply -f "$file" -n $K8S_NAMESPACE || exit 1
+              done
 
-          echo "⏳ Waiting for Deployment Rollout..."
-          kubectl rollout status deployment/myapp -n $K8S_NAMESPACE || exit 1
-        '''
+              echo "⏳ Waiting for Deployment Rollout..."
+              kubectl rollout status deployment/myapp -n $K8S_NAMESPACE || exit 1
+            '''
+          }
+        }
       }
     }
-  }
-}
-
+  } // ✅ Corrected closing brace here!
 
   post {
     success {
