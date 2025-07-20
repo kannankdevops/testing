@@ -2,6 +2,7 @@ pipeline {
   agent {
     kubernetes {
       label 'myapp-agent'
+      defaultContainer 'docker'
       yaml """
 apiVersion: v1
 kind: Pod
@@ -28,6 +29,7 @@ spec:
 
   environment {
     DOCKER_IMAGE = "kkaann/myapp:latest"
+    K8S_NAMESPACE = "jenkins"
   }
 
   triggers {
@@ -59,12 +61,15 @@ spec:
     stage('Deploy to Kubernetes') {
       steps {
         container('kubectl') {
-          sh 'kubectl version --client'
           sh '''
-            kubectl apply -f myapp-configmap.yaml -n jenkins
-            kubectl apply -f myapp-deployment.yaml -n jenkins
-            kubectl apply -f myapp-service.yaml -n jenkins
-            kubectl apply -f myapp-ingress.yaml -n jenkins
+            echo "🔍 Setting Kube Context"
+            kubectl config use-context docker-desktop || true
+
+            echo "🚀 Deploying to Kubernetes"
+            kubectl apply -f myapp-configmap.yaml -n $K8S_NAMESPACE
+            kubectl apply -f myapp-deployment.yaml -n $K8S_NAMESPACE
+            kubectl apply -f myapp-service.yaml -n $K8S_NAMESPACE
+            kubectl apply -f myapp-ingress.yaml -n $K8S_NAMESPACE
           '''
         }
       }
@@ -73,19 +78,19 @@ spec:
 
   post {
     success {
-      echo "✅ Deployment complete"
+      echo "✅ Deployment completed successfully."
     }
     failure {
-      echo "❌ Deployment failed"
+      echo "❌ Deployment failed! Check logs above."
     }
     always {
       script {
         try {
           cleanWs()
         } catch (Exception e) {
-          echo "⚠️ Could not clean workspace: ${e.message}"
+          echo "⚠️ Workspace cleanup failed: ${e.message}"
         }
       }
     }
-  } // ← THIS was missing
+  }
 }
