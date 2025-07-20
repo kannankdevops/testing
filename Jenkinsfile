@@ -76,15 +76,26 @@ spec:
         container('kubectl') {
           withCredentials([file(credentialsId: 'kubeconfig', variable: 'KUBECONFIG_FILE')]) {
             sh '''
+              echo "Shell check:"
+              ls -l /bin/sh
+              which sh || echo "No sh found"
+
+              echo "🛠️ Preparing kubeconfig"
               mkdir -p ~/.kube
               cp $KUBECONFIG_FILE ~/.kube/config
               chmod 600 ~/.kube/config
+
+              echo "🔍 kubectl version:"
+              kubectl version --client
+
               echo "📄 Applying all YAML manifests..."
               for file in *.yaml; do
                 echo "📄 Applying $file"
-                kubectl apply -f "$file" -n jenkins
+                kubectl apply -f "$file" -n $K8S_NAMESPACE
               done
-              kubectl rollout status deployment/myapp -n jenkins
+
+              echo "⏳ Waiting for rollout..."
+              kubectl rollout status deployment/myapp -n $K8S_NAMESPACE
             '''
           }
         }
