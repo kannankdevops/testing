@@ -22,7 +22,7 @@ spec:
           mountPath: /var/run/docker.sock
 
     - name: kubectl
-      image: kkaann/kubectl:1.30.1
+      image: bitnami/kubectl:1.30.1
       command: ['cat']
       tty: true
       volumeMounts:
@@ -44,7 +44,6 @@ spec:
 
   environment {
     DOCKER_IMAGE = "kkaann/myapp"
-    KUBECTL_IMAGE = "kkaann/kubectl:1.30.1"
     TAG = "latest"
     IMAGE_NAME = "${DOCKER_IMAGE}:${TAG}"
     K8S_NAMESPACE = "jenkins"
@@ -60,18 +59,6 @@ spec:
     stage('📥 Checkout Code') {
       steps {
         git branch: 'main', url: 'https://github.com/kannankdevops/testing.git'
-      }
-    }
-
-    stage('⚙️ Build Custom kubectl Image') {
-      steps {
-        container('docker') {
-          sh '''
-            echo "🔨 Building kubectl image..."
-            docker build -t ${KUBECTL_IMAGE} -f Dockerfile.kubectl .
-            docker push ${KUBECTL_IMAGE}
-          '''
-        }
       }
     }
 
