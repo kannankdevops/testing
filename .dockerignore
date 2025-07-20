@@ -1,0 +1,14 @@
+node_modules
+npm-debug.log
+Dockerfile.kubectl
+*.tar.gz
+*.war
+
+
+# Optional:
+.git
+.gitignore
+.vscode
+*.swp
+*.bak
+.env

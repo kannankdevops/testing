@@ -1,13 +1,20 @@
-FROM docker:24.0
+# Use a base image with shell and curl support
+FROM alpine:3.20
 
-# Install curl, bash
-RUN apk add --no-cache bash curl
+# Set working directory
+WORKDIR /tools
 
-# Install kubectl in a clean way using hard-coded version
+# Install necessary tools: bash, curl, ca-certificates, coreutils
+RUN apk add --no-cache bash curl ca-certificates coreutils
+
+# Install kubectl (stable version v1.30.1)
 ENV KUBECTL_VERSION=v1.30.1
-
 RUN curl -LO https://dl.k8s.io/release/${KUBECTL_VERSION}/bin/linux/amd64/kubectl && \
     install -o root -g root -m 0755 kubectl /usr/local/bin/kubectl && \
     rm kubectl
 
+# Set default shell explicitly for Jenkins
+SHELL ["/bin/bash", "-c"]
+
+# Default command (idle for debugging)
 CMD ["sleep", "3600"]
