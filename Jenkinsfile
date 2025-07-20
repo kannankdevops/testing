@@ -1,29 +1,28 @@
 pipeline {
   agent {
     kubernetes {
+      label 'jenkins-k8s-agent'
+      defaultContainer 'docker'
       yaml """
 apiVersion: v1
 kind: Pod
 metadata:
   labels:
-    jenkins: agent
+    app: jenkins-k8s-agent
 spec:
   containers:
     - name: docker
-      image: docker:24.0.7
+      image: docker:24.0
       command: ['cat']
       tty: true
+      securityContext:
+        privileged: true
       volumeMounts:
         - name: docker-sock
           mountPath: /var/run/docker.sock
 
-    - name: node
-      image: node:18-alpine
-      command: ['cat']
-      tty: true
-
     - name: kubectl
-      image: bitnami/kubectl:1.32
+      image: bitnami/kubectl:1.29
       command: ['cat']
       tty: true
       volumeMounts:
@@ -36,68 +35,51 @@ spec:
         path: /var/run/docker.sock
         type: Socket
     - name: kubeconfig
-      secret:
-        secretName: kubeconfig-secret
+      hostPath:
+        path: /root/.kube
+        type: Directory
 """
     }
   }
 
   environment {
     DOCKER_IMAGE = "kkaann/myapp"
-    DOCKER_TAG = "${env.BUILD_NUMBER}"
+    TAG = "latest"
+    IMAGE_NAME = "${DOCKER_IMAGE}:${TAG}"
     K8S_NAMESPACE = "jenkins"
     KUBECONFIG = "/root/.kube/config"
   }
 
+  triggers {
+    githubPush()
+  }
+
   stages {
+
     stage('📥 Checkout Code') {
       steps {
-        container('node') {
-          git branch: 'main', url: 'https://github.com/kannankdevops/testing.git'
-        }
+        git branch: 'main', url: 'https://github.com/kannankdevops/testing.git'
       }
     }
 
-    stage('📦 Install Dependencies') {
-      steps {
-        container('node') {
-          sh 'npm install'
-          sh 'npm run build || echo "No build script defined."'
-        }
-      }
-    }
-
-    stage('🐳 Build Docker Image') {
-      steps {
-        container('docker') {
-          sh '''
-            echo "[INFO] Docker Version:"
-            docker version
-
-            echo "[INFO] Building Docker Image..."
-            export DOCKER_BUILDKIT=1
-            docker build -t $DOCKER_IMAGE:$DOCKER_TAG .
-            docker tag $DOCKER_IMAGE:$DOCKER_TAG $DOCKER_IMAGE:latest
-          '''
-        }
-      }
-    }
-
-    stage('📤 Push Docker Image') {
+    stage('🐳 Build & Push Docker Image') {
       steps {
         container('docker') {
           withCredentials([usernamePassword(
-            credentialsId: 'dockerhub-creds',
+            credentialsId: 'kkaann', // DockerHub credentials ID
             usernameVariable: 'DOCKER_USER',
             passwordVariable: 'DOCKER_PASS'
           )]) {
             sh '''
-              echo "[INFO] Logging in to Docker Hub..."
+              echo "🔐 Logging into DockerHub..."
               echo "$DOCKER_PASS" | docker login -u "$DOCKER_USER" --password-stdin
 
-              echo "[INFO] Pushing Docker Image..."
-              docker push $DOCKER_IMAGE:$DOCKER_TAG
-              docker push $DOCKER_IMAGE:latest
+              echo "🔧 Building Docker image with BuildKit..."
+              export DOCKER_BUILDKIT=1
+              docker build -t $IMAGE_NAME .
+
+              echo "📤 Pushing image to DockerHub..."
+              docker push $IMAGE_NAME
             '''
           }
         }
@@ -107,39 +89,33 @@ spec:
     stage('🚀 Deploy to Kubernetes') {
       steps {
         container('kubectl') {
-          withCredentials([file(credentialsId: 'kubeconfig-secret', variable: 'KUBECONFIG')]) {
+          script {
+            def manifests = [
+              'myapp-configmap.yaml',
+              'myapp-deployment.yaml',
+              'myapp-service.yaml',
+              'myapp-ingress.yaml'
+            ]
+
+            for (file in manifests) {
+              try {
+                sh """
+                  echo "📄 Applying manifest: ${file}"
+                  kubectl apply -f ${file} -n $K8S_NAMESPACE
+                """
+              } catch (Exception e) {
+                error "❌ Failed to apply ${file}: ${e.getMessage()}"
+              }
+            }
+
             sh '''
-              echo "🔍 Using Kubeconfig: $KUBECONFIG"
-              kubectl config get-contexts
-              kubectl config current-context || exit 1
-
-              echo "📄 Applying YAML manifests..."
-              for file in *.yaml; do
-                echo "➡️ Applying $file"
-                kubectl apply -f "$file" -n $K8S_NAMESPACE || exit 1
-              done
-
-              echo "⏳ Waiting for Deployment rollout..."
-              if ! kubectl rollout status deployment/myapp -n $K8S_NAMESPACE --timeout=60s; then
-                echo "❌ Rollout failed. Collecting debug info..."
-
-                echo "🔍 Deployment YAML:"
-                kubectl get deployment myapp -n $K8S_NAMESPACE -o yaml || true
-
-                echo "🔍 Pods:"
-                kubectl get pods -n $K8S_NAMESPACE -o wide || true
-
-                echo "🔍 Pod Logs:"
-                for pod in $(kubectl get pods -n $K8S_NAMESPACE -l app=myapp -o jsonpath='{.items[*].metadata.name}'); do
-                  echo "📄 Logs for $pod"
-                  kubectl logs "$pod" -n $K8S_NAMESPACE --tail=100 || true
-                done
-
-                echo "🔍 Events:"
-                kubectl get events -n $K8S_NAMESPACE --sort-by=.metadata.creationTimestamp || true
-
+              echo "🔍 Verifying deployment status..."
+              kubectl rollout status deployment/myapp -n $K8S_NAMESPACE --timeout=60s || {
+                echo "⚠️ Rollout failed. Debug info below:"
+                kubectl get all -n $K8S_NAMESPACE
+                kubectl describe deployment myapp -n $K8S_NAMESPACE || true
                 exit 1
-              fi
+              }
             '''
           }
         }
@@ -149,13 +125,14 @@ spec:
 
   post {
     success {
-      echo "✅ Deployment of ${DOCKER_IMAGE}:${DOCKER_TAG} succeeded!"
+      echo "✅ Pipeline completed successfully. ${IMAGE_NAME} is deployed to Kubernetes."
     }
     failure {
-      echo "❌ Pipeline failed. See logs and Kubernetes debug output above."
+      echo "❌ Pipeline failed. Please check the logs above for details."
     }
     always {
       cleanWs()
+      echo '🧹 Workspace cleaned.'
     }
   }
 }
