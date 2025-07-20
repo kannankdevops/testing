@@ -15,7 +15,7 @@ spec:
         - name: docker-sock
           mountPath: /var/run/docker.sock
     - name: kubectl
-      image: lachlanevenson/k8s-kubectl:v1.27.1
+      image: bitnami/kubectl:1.27.1-debian-11-r0
       command: ['cat']
       tty: true
   volumes:
@@ -31,7 +31,7 @@ spec:
   }
 
   triggers {
-    githubPush()  // Make sure webhook is configured correctly in GitHub
+    githubPush()
   }
 
   stages {
@@ -45,9 +45,12 @@ spec:
       steps {
         container('docker') {
           withCredentials([usernamePassword(credentialsId: 'kkaann', usernameVariable: 'DOCKER_USER', passwordVariable: 'DOCKER_PASS')]) {
-            sh 'echo $DOCKER_PASS | docker login -u $DOCKER_USER --password-stdin'
-            sh 'docker build -t $DOCKER_IMAGE .'
-            sh 'docker push $DOCKER_IMAGE'
+            sh '''
+              echo $DOCKER_PASS | docker login -u $DOCKER_USER --password-stdin
+              export DOCKER_BUILDKIT=1
+              docker build -t $DOCKER_IMAGE .
+              docker push $DOCKER_IMAGE
+            '''
           }
         }
       }
@@ -56,15 +59,16 @@ spec:
     stage('Deploy to Kubernetes') {
       steps {
         container('kubectl') {
-          // Optional: Validate kubectl context
+          // Optional: Run kubectl commands
           sh 'kubectl version --client'
-          sh 'kubectl config get-contexts'
 
-          // Updated paths: all YAMLs are in repo root
-          sh 'kubectl apply -f myapp-configmap.yaml -n jenkins'
-          sh 'kubectl apply -f myapp-deployment.yaml -n jenkins'
-          sh 'kubectl apply -f myapp-service.yaml -n jenkins'
-          sh 'kubectl apply -f myapp-ingress.yaml -n jenkins'
+          // Apply all YAML files
+          sh '''
+            kubectl apply -f myapp-configmap.yaml -n jenkins
+            kubectl apply -f myapp-deployment.yaml -n jenkins
+            kubectl apply -f myapp-service.yaml -n jenkins
+            kubectl apply -f myapp-ingress.yaml -n jenkins
+          '''
         }
       }
     }
@@ -78,7 +82,13 @@ spec:
       echo "❌ Deployment failed"
     }
     always {
-      cleanWs()
+      script {
+        try {
+          cleanWs()
+        } catch (Exception e) {
+          echo "⚠️ Could not clean workspace: ${e.message}"
+        }
+      }
     }
   }
 }
