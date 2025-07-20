@@ -75,20 +75,20 @@ spec:
   }
 
   post {
-    success {
-      echo "✅ Deployment complete"
-    }
-    failure {
-      echo "❌ Deployment failed"
-    }
-    always {
-      script {
-        try {
-          cleanWs()
-        } catch (Exception e) {
-          echo "⚠️ Could not clean workspace: ${e.message}"
-        }
+  success {
+    echo "✅ Deployment complete"
+  }
+  failure {
+    echo "❌ Deployment failed"
+  }
+  always {
+    script {
+      try {
+        cleanWs()
+      } catch (Exception e) {
+        echo "⚠️ Could not clean workspace: ${e.message}"
       }
     }
   }
 }
+
