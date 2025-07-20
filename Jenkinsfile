@@ -85,12 +85,10 @@ spec:
       steps {
         container('kubectl') {
           script {
-            def manifestFiles = [
-              'myapp-configmap.yaml',
-              'myapp-deployment.yaml',
-              'myapp-service.yaml',
-              'myapp-ingress.yaml'
-            ]
+            // Only apply .yaml files (exclude .json, Dockerfile, etc.)
+            def manifestFiles = sh(script: "ls *.yaml", returnStdout: true)
+                                  .trim()
+                                  .split("\\n")
 
             for (file in manifestFiles) {
               try {
