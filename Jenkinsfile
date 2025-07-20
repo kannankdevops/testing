@@ -59,10 +59,7 @@ spec:
     stage('Deploy to Kubernetes') {
       steps {
         container('kubectl') {
-          // Optional: Run kubectl commands
           sh 'kubectl version --client'
-
-          // Apply all YAML files
           sh '''
             kubectl apply -f myapp-configmap.yaml -n jenkins
             kubectl apply -f myapp-deployment.yaml -n jenkins
@@ -75,20 +72,20 @@ spec:
   }
 
   post {
-  success {
-    echo "✅ Deployment complete"
-  }
-  failure {
-    echo "❌ Deployment failed"
-  }
-  always {
-    script {
-      try {
-        cleanWs()
-      } catch (Exception e) {
-        echo "⚠️ Could not clean workspace: ${e.message}"
+    success {
+      echo "✅ Deployment complete"
+    }
+    failure {
+      echo "❌ Deployment failed"
+    }
+    always {
+      script {
+        try {
+          cleanWs()
+        } catch (Exception e) {
+          echo "⚠️ Could not clean workspace: ${e.message}"
+        }
       }
     }
-  }
+  } // ← THIS was missing
 }
-
