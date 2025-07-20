@@ -23,8 +23,8 @@ spec:
       tty: true
 
     - name: kubectl
-      image: lachlanevenson/k8s-kubectl:v1.32.0
-      command: ['/bin/sh', '-c', 'cat']
+      image: bitnami/kubectl:1.32
+      command: ['cat']
       tty: true
       volumeMounts:
         - name: kubeconfig
@@ -87,7 +87,7 @@ spec:
       steps {
         container('docker') {
           withCredentials([usernamePassword(
-            credentialsId: 'dockerhub-creds', // ✅ Matches your Jenkins credentials
+            credentialsId: 'dockerhub-creds',
             usernameVariable: 'DOCKER_USER',
             passwordVariable: 'DOCKER_PASS'
           )]) {
@@ -107,7 +107,7 @@ spec:
     stage('🚀 Deploy to Kubernetes') {
       steps {
         container('kubectl') {
-          withCredentials([file(credentialsId: 'kubeconfig-secret', variable: 'KUBECONFIG')]) { // ✅ Matches your Jenkins kubeconfig file
+          withCredentials([file(credentialsId: 'kubeconfig-secret', variable: 'KUBECONFIG')]) {
             sh '''
               echo "🔍 Using Kubeconfig: $KUBECONFIG"
               kubectl config get-contexts
