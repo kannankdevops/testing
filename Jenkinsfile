@@ -9,8 +9,9 @@ kind: Pod
 spec:
   containers:
     - name: docker
-      image: docker:24.0
-      command: ['cat']
+      image: docker:24.0-cli
+      command: ["/bin/sh"]
+      args: ["-c", "cat"]
       tty: true
       securityContext:
         privileged: true
@@ -19,19 +20,18 @@ spec:
           mountPath: /var/run/docker.sock
 
     - name: kubectl
-      image: bitnami/kubectl:1.27.1-debian-11-r0
-      command: ['cat']
+      image: bitnami/kubectl:1.27.1
+      command: ["/bin/sh"]
+      args: ["-c", "cat"]
       tty: true
       volumeMounts:
         - name: kubeconfig
           mountPath: /root/.kube
-
   volumes:
     - name: docker-sock
       hostPath:
         path: /var/run/docker.sock
         type: Socket
-
     - name: kubeconfig
       hostPath:
         path: /root/.kube
@@ -61,13 +61,13 @@ spec:
       steps {
         container('docker') {
           withCredentials([usernamePassword(
-            credentialsId: 'kkaann',
+            credentialsId: 'dockerhub-creds', // ✅ Ensure this ID exists in Jenkins
             usernameVariable: 'DOCKER_USER',
             passwordVariable: 'DOCKER_PASS'
           )]) {
             sh '''
               echo "🔐 Logging in to DockerHub..."
-              echo $DOCKER_PASS | docker login -u $DOCKER_USER --password-stdin
+              echo "$DOCKER_PASS" | docker login -u "$DOCKER_USER" --password-stdin
 
               echo "🔧 Building Docker image with BuildKit..."
               export DOCKER_BUILDKIT=1
@@ -85,20 +85,14 @@ spec:
       steps {
         container('kubectl') {
           script {
-            // Only apply .yaml files (exclude .json, Dockerfile, etc.)
-            def manifestFiles = sh(script: "ls *.yaml", returnStdout: true)
-                                  .trim()
-                                  .split("\\n")
+            def manifestFiles = sh(
+              script: "ls *.yaml",
+              returnStdout: true
+            ).trim().split("\\n")
 
             for (file in manifestFiles) {
-              try {
-                sh """
-                  echo "📄 Applying $file..."
-                  kubectl apply -f $file -n $K8S_NAMESPACE
-                """
-              } catch (Exception e) {
-                error "❌ Failed to apply $file: ${e.getMessage()}"
-              }
+              echo "📄 Applying ${file}..."
+              sh "kubectl apply -f ${file} -n $K8S_NAMESPACE"
             }
           }
         }
