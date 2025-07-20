@@ -17,7 +17,7 @@ spec:
         - name: myapp
           image: kkaann/myapp:latest
           ports:
-            - containerPort: 3000  # ✅ FIXED to match Docker/Express
+            - containerPort: 3000
           env:
             - name: APP_MESSAGE
               valueFrom:
