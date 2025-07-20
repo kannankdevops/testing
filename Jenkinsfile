@@ -1,45 +1,43 @@
 pipeline {
   agent {
     kubernetes {
-      label 'myapp-agent'
-      defaultContainer 'docker'
       yaml """
 apiVersion: v1
 kind: Pod
+metadata:
+  labels:
+    jenkins: agent
 spec:
   containers:
-    - name: node
-      image: node:18-alpine
-      command: ["/bin/sh"]
-      args: ["-c", "cat"]
-      tty: true
     - name: docker
-      image: docker:24.0-cli
-      command: ["/bin/sh"]
-      args: ["-c", "cat"]
+      image: docker:24.0.7
+      command: ['cat']
       tty: true
-      securityContext:
-        privileged: true
       volumeMounts:
         - name: docker-sock
           mountPath: /var/run/docker.sock
+
+    - name: node
+      image: node:18-alpine
+      command: ['cat']
+      tty: true
+
     - name: kubectl
-      image: bitnami/kubectl:1.32
-      command: ["/bin/sh"]
-      args: ["-c", "cat"]
+      image: lachlanevenson/k8s-kubectl:v1.32.0
+      command: ['/bin/sh', '-c', 'cat']
       tty: true
       volumeMounts:
         - name: kubeconfig
           mountPath: /root/.kube
+
   volumes:
     - name: docker-sock
       hostPath:
         path: /var/run/docker.sock
         type: Socket
     - name: kubeconfig
-      hostPath:
-        path: /root/.kube
-        type: Directory
+      secret:
+        secretName: kubeconfig-secret
 """
     }
   }
@@ -47,8 +45,8 @@ spec:
   environment {
     DOCKER_IMAGE = "kkaann/myapp"
     DOCKER_TAG = "${env.BUILD_NUMBER}"
-    DOCKER_CREDENTIALS_ID = 'dockerhub-creds'
     K8S_NAMESPACE = "jenkins"
+    KUBECONFIG = "/root/.kube/config"
   }
 
   stages {
@@ -64,7 +62,7 @@ spec:
       steps {
         container('node') {
           sh 'npm install'
-          sh 'npm run build || echo "No build step defined."'
+          sh 'npm run build || echo "No build script defined."'
         }
       }
     }
@@ -73,7 +71,10 @@ spec:
       steps {
         container('docker') {
           sh '''
+            echo "[INFO] Docker Version:"
             docker version
+
+            echo "[INFO] Building Docker Image..."
             export DOCKER_BUILDKIT=1
             docker build -t $DOCKER_IMAGE:$DOCKER_TAG .
             docker tag $DOCKER_IMAGE:$DOCKER_TAG $DOCKER_IMAGE:latest
@@ -86,12 +87,15 @@ spec:
       steps {
         container('docker') {
           withCredentials([usernamePassword(
-            credentialsId: "${DOCKER_CREDENTIALS_ID}",
+            credentialsId: 'dockerhub-creds', // ✅ Matches your Jenkins credentials
             usernameVariable: 'DOCKER_USER',
             passwordVariable: 'DOCKER_PASS'
           )]) {
             sh '''
+              echo "[INFO] Logging in to Docker Hub..."
               echo "$DOCKER_PASS" | docker login -u "$DOCKER_USER" --password-stdin
+
+              echo "[INFO] Pushing Docker Image..."
               docker push $DOCKER_IMAGE:$DOCKER_TAG
               docker push $DOCKER_IMAGE:latest
             '''
@@ -103,30 +107,39 @@ spec:
     stage('🚀 Deploy to Kubernetes') {
       steps {
         container('kubectl') {
-          withCredentials([file(credentialsId: 'kubeconfig', variable: 'KUBECONFIG')]) {
+          withCredentials([file(credentialsId: 'kubeconfig-secret', variable: 'KUBECONFIG')]) { // ✅ Matches your Jenkins kubeconfig file
             sh '''
-              echo "🔍 Current user: $(whoami)"
-              echo "🔍 Directory: $(pwd)"
-              echo "🔍 Files:"
-              ls -alh
-
-              echo "🔍 Checking KUBECONFIG at $KUBECONFIG"
-              if [ ! -f "$KUBECONFIG" ]; then
-                echo "❌ KUBECONFIG not found"
-                exit 1
-              fi
-
-              echo "🔍 Kubernetes context:"
+              echo "🔍 Using Kubeconfig: $KUBECONFIG"
+              kubectl config get-contexts
               kubectl config current-context || exit 1
 
-              echo "📄 Applying manifests"
+              echo "📄 Applying YAML manifests..."
               for file in *.yaml; do
-                echo "📄 Applying $file"
+                echo "➡️ Applying $file"
                 kubectl apply -f "$file" -n $K8S_NAMESPACE || exit 1
               done
 
-              echo "⏳ Waiting for rollout..."
-              kubectl rollout status deployment/myapp -n $K8S_NAMESPACE || exit 1
+              echo "⏳ Waiting for Deployment rollout..."
+              if ! kubectl rollout status deployment/myapp -n $K8S_NAMESPACE --timeout=60s; then
+                echo "❌ Rollout failed. Collecting debug info..."
+
+                echo "🔍 Deployment YAML:"
+                kubectl get deployment myapp -n $K8S_NAMESPACE -o yaml || true
+
+                echo "🔍 Pods:"
+                kubectl get pods -n $K8S_NAMESPACE -o wide || true
+
+                echo "🔍 Pod Logs:"
+                for pod in $(kubectl get pods -n $K8S_NAMESPACE -l app=myapp -o jsonpath='{.items[*].metadata.name}'); do
+                  echo "📄 Logs for $pod"
+                  kubectl logs "$pod" -n $K8S_NAMESPACE --tail=100 || true
+                done
+
+                echo "🔍 Events:"
+                kubectl get events -n $K8S_NAMESPACE --sort-by=.metadata.creationTimestamp || true
+
+                exit 1
+              fi
             '''
           }
         }
@@ -136,10 +149,10 @@ spec:
 
   post {
     success {
-      echo "✅ Deployment of ${DOCKER_IMAGE}:${DOCKER_TAG} completed successfully!"
+      echo "✅ Deployment of ${DOCKER_IMAGE}:${DOCKER_TAG} succeeded!"
     }
     failure {
-      echo "❌ Pipeline failed. Please check the logs above."
+      echo "❌ Pipeline failed. See logs and Kubernetes debug output above."
     }
     always {
       cleanWs()
