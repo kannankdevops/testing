@@ -15,29 +15,27 @@ spec:
       image: docker:24.0
       command: ['cat']
       tty: true
-      securityContext:
-        privileged: true
-      volumeMounts:
-        - name: docker-sock
-          mountPath: /var/run/docker.sock
+      resources:
+        requests:
+          cpu: 100m
+          memory: 256Mi
 
     - name: kubectl
       image: bitnami/kubectl:1.30.1
       command: ['cat']
       tty: true
+      env:
+        - name: KUBECONFIG
+          value: /kubeconfig/config
       volumeMounts:
         - name: kubeconfig
-          mountPath: /root/.kube
+          mountPath: /kubeconfig
+          readOnly: true
 
   volumes:
-    - name: docker-sock
-      hostPath:
-        path: /var/run/docker.sock
-        type: Socket
     - name: kubeconfig
-      hostPath:
-        path: /root/.kube
-        type: Directory
+      secret:
+        secretName: kubeconfig  # 👈 Must match the ID of your secret file credential in Jenkins
 """
     }
   }
@@ -47,7 +45,7 @@ spec:
     TAG = "latest"
     IMAGE_NAME = "${DOCKER_IMAGE}:${TAG}"
     K8S_NAMESPACE = "jenkins"
-    KUBECONFIG = "/root/.kube/config"
+    KUBECONFIG = "/kubeconfig/config"
   }
 
   triggers {
