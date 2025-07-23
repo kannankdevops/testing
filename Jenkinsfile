@@ -24,7 +24,7 @@ spec:
           mountPath: /home/jenkins/agent
 
     - name: kubectl
-      image: bitnami/kubectl:1.30.1
+      image: kkaann/kubectl-shell:1.30.1
       command: ['cat']
       tty: true
       env:
