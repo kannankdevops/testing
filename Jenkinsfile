@@ -15,10 +15,13 @@ spec:
       image: docker:24.0
       command: ['cat']
       tty: true
-      resources:
-        requests:
-          cpu: 100m
-          memory: 256Mi
+      securityContext:
+        privileged: true
+      volumeMounts:
+        - name: docker-sock
+          mountPath: /var/run/docker.sock
+        - name: workspace-volume
+          mountPath: /home/jenkins/agent
 
     - name: kubectl
       image: bitnami/kubectl:1.30.1
@@ -31,11 +34,21 @@ spec:
         - name: kubeconfig
           mountPath: /kubeconfig
           readOnly: true
+        - name: workspace-volume
+          mountPath: /home/jenkins/agent
 
   volumes:
+    - name: docker-sock
+      hostPath:
+        path: /var/run/docker.sock
+        type: Socket
     - name: kubeconfig
       secret:
-        secretName: kubeconfig  # 👈 Must match the ID of your secret file credential in Jenkins
+        secretName: kubeconfig
+    - name: workspace-volume
+      emptyDir: {}
+  nodeSelector:
+    kubernetes.io/os: linux
 """
     }
   }
