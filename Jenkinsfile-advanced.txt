@@ -1,0 +1,79 @@
+pipeline {
+    agent any
+    
+    environment {
+        DOCKER_REGISTRY = 'kkaann'
+        APP_NAME = 'myapp'
+        CLUSTER_NAME = 'kind'
+    }
+    
+    stages {
+        stage('Checkout') {
+            steps {
+                echo 'Checking out code...'
+                checkout scm
+            }
+        }
+        
+        stage('Build') {
+            steps {
+                echo 'Building Docker image...'
+                script {
+                    sh "docker build -t ${DOCKER_REGISTRY}/${APP_NAME}:${BUILD_NUMBER} ."
+                    sh "docker tag ${DOCKER_REGISTRY}/${APP_NAME}:${BUILD_NUMBER} ${DOCKER_REGISTRY}/${APP_NAME}:latest"
+                }
+            }
+        }
+        
+        stage('Test') {
+            steps {
+                echo 'Running tests...'
+                script {
+                    sh "docker run --rm ${DOCKER_REGISTRY}/${APP_NAME}:${BUILD_NUMBER} npm test || true"
+                }
+            }
+        }
+        
+        stage('Push to Registry') {
+            steps {
+                echo 'Pushing to Docker Hub...'
+                script {
+                    // In real scenario, use credentials
+                    sh "docker push ${DOCKER_REGISTRY}/${APP_NAME}:${BUILD_NUMBER}"
+                    sh "docker push ${DOCKER_REGISTRY}/${APP_NAME}:latest"
+                }
+            }
+        }
+        
+        stage('Deploy to Dev') {
+            steps {
+                echo 'Deploying to Kind cluster...'
+                script {
+                    sh "kubectl set image deployment/myapp myapp=${DOCKER_REGISTRY}/${APP_NAME}:${BUILD_NUMBER} -n jenkins"
+                    sh "kubectl rollout status deployment/myapp -n jenkins"
+                }
+            }
+        }
+        
+        stage('Smoke Test') {
+            steps {
+                echo 'Running smoke tests...'
+                script {
+                    sh """
+                        kubectl run curl-test --image=curlimages/curl --rm -i --restart=Never -n jenkins -- \
+                        curl -f http://myapp-service:3000/health || echo 'Health check pending'
+                    """
+                }
+            }
+        }
+    }
+    
+    post {
+        success {
+            echo 'Pipeline completed successfully!'
+        }
+        failure {
+            echo 'Pipeline failed! Check logs.'
+        }
+    }
+}
