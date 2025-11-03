@@ -1,4 +1,37 @@
+# Node modules
 node_modules/
+
+# Logs
+*.log
+npm-debug.log*
+
+# Environment files
+.env
+.env.local
+.env.*.local
+
+# Jenkins backups
 *.tar.gz
+jenkins-home-backup/
 jenkins.war
-jenkins*.tar.gz
+
+# Kubernetes secrets (NEVER commit these!)
+*-secret.yaml
+secrets/
+*.key
+*.pem
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Build artifacts
+dist/
+build/
