@@ -34,4 +34,4 @@ Thumbs.db
 
 # Build artifacts
 dist/
-build/
+build/*.backup
