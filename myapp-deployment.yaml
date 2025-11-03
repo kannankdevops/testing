@@ -20,21 +20,13 @@ spec:
           image: kkaann/myapp:latest
           ports:
             - containerPort: 3000
-          env:
+          env:                              # <-- Already has env section
             - name: APP_MESSAGE
               valueFrom:
                 configMapKeyRef:
                   name: myapp-config
                   key: APP_MESSAGE
-          livenessProbe:
-            httpGet:
-              path: /
-              port: 3000
-            initialDelaySeconds: 5
-            periodSeconds: 10
-          readinessProbe:
-            httpGet:
-              path: /
-              port: 3000
-            initialDelaySeconds: 5
-            periodSeconds: 5
+            - name: DATABASE_URL
+              value: "postgresql://localhost:5432/mydb"
+            - name: NODE_ENV
+              value: "development"
