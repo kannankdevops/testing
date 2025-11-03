@@ -11,6 +11,16 @@ app.get('/', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'index.html'));
 });
 
+// Health check endpoint (needed for pipeline smoke tests)
+app.get('/health', (req, res) => {
+  res.json({ 
+    status: 'healthy',
+    uptime: process.uptime(),
+    timestamp: new Date().toISOString(),
+    version: '1.0.0'
+  });
+});
+
 app.listen(port, () => {
   console.log(`🚀 Server running at http://0.0.0.0:${port}`);
 });
