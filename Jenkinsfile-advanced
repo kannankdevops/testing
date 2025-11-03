@@ -1,57 +1,69 @@
 pipeline {
     agent any
     
-    environment {
-        DOCKER_REGISTRY = 'kkaann'
-        APP_NAME = 'myapp'
-        CLUSTER_NAME = 'kind'
+    triggers {
+        pollSCM('H/5 * * * *')
+    }
+    
+    options {
+        timeout(time: 1, unit: 'HOURS')
+        buildDiscarder(logRotator(numToKeepStr: '10'))
+        skipStagesAfterUnstable()
     }
     
     stages {
         stage('Checkout') {
             steps {
                 echo 'Checking out code...'
-                checkout scm
+                retry(3) {
+                    checkout([
+                        $class: 'GitSCM',
+                        branches: [[name: '*/main']],
+                        extensions: [
+                            [$class: 'CloneOption', 
+                             timeout: 30, 
+                             depth: 1, 
+                             shallow: true,
+                             noTags: true],
+                            [$class: 'CheckoutOption', timeout: 30]
+                        ],
+                        userRemoteConfigs: [[
+                            url: 'https://github.com/kannankdevops/testing.git'
+                        ]]
+                    ])
+                }
             }
         }
         
         stage('Build') {
             steps {
+                echo 'Installing dependencies...'
+                bat 'npm install'
                 echo 'Building Docker image...'
-                script {
-                    sh "docker build -t ${DOCKER_REGISTRY}/${APP_NAME}:${BUILD_NUMBER} ."
-                    sh "docker tag ${DOCKER_REGISTRY}/${APP_NAME}:${BUILD_NUMBER} ${DOCKER_REGISTRY}/${APP_NAME}:latest"
-                }
+                bat 'docker build -t myapp:latest .'
             }
         }
         
         stage('Test') {
             steps {
                 echo 'Running tests...'
-                script {
-                    sh "docker run --rm ${DOCKER_REGISTRY}/${APP_NAME}:${BUILD_NUMBER} npm test || true"
-                }
+                bat 'npm test'
             }
         }
         
         stage('Push to Registry') {
             steps {
-                echo 'Pushing to Docker Hub...'
-                script {
-                    // In real scenario, use credentials
-                    sh "docker push ${DOCKER_REGISTRY}/${APP_NAME}:${BUILD_NUMBER}"
-                    sh "docker push ${DOCKER_REGISTRY}/${APP_NAME}:latest"
-                }
+                echo 'Tagging and pushing image...'
+                bat 'docker tag myapp:latest localhost:5000/myapp:latest'
+                bat 'docker push localhost:5000/myapp:latest'
             }
         }
         
         stage('Deploy to Dev') {
             steps {
-                echo 'Deploying to Kind cluster...'
-                script {
-                    sh "kubectl set image deployment/myapp myapp=${DOCKER_REGISTRY}/${APP_NAME}:${BUILD_NUMBER} -n jenkins"
-                    sh "kubectl rollout status deployment/myapp -n jenkins"
-                }
+                echo 'Deploying to Kubernetes...'
+                bat 'kubectl apply -f k8s-deployment.yaml'
+                bat 'kubectl rollout status deployment/myapp -n jenkins'
             }
         }
         
@@ -59,10 +71,8 @@ pipeline {
             steps {
                 echo 'Running smoke tests...'
                 script {
-                    sh """
-                        kubectl run curl-test --image=curlimages/curl --rm -i --restart=Never -n jenkins -- \
-                        curl -f http://myapp-service:3000/health || echo 'Health check pending'
-                    """
+                    sleep(time: 10, unit: 'SECONDS')
+                    bat 'curl -s http://myapp.local/health'
                 }
             }
         }
@@ -70,10 +80,14 @@ pipeline {
     
     post {
         success {
-            echo 'Pipeline completed successfully!'
+            echo '✅ Pipeline completed successfully!'
         }
         failure {
-            echo 'Pipeline failed! Check logs.'
+            echo '❌ Pipeline failed! Check logs.'
+        }
+        always {
+            echo 'Cleaning up workspace...'
+            cleanWs()
         }
     }
 }
