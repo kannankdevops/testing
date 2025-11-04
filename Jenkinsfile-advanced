@@ -1,93 +1,82 @@
 pipeline {
     agent any
-    
+
     triggers {
         pollSCM('H/5 * * * *')
     }
-    
+
     options {
         timeout(time: 1, unit: 'HOURS')
         buildDiscarder(logRotator(numToKeepStr: '10'))
         skipStagesAfterUnstable()
+        timestamps()  // Add timestamps to logs
     }
-    
+
     stages {
         stage('Checkout') {
             steps {
                 echo 'Checking out code...'
-                retry(3) {
-                    checkout([
-                        $class: 'GitSCM',
-                        branches: [[name: '*/main']],
-                        extensions: [
-                            [$class: 'CloneOption', 
-                             timeout: 30, 
-                             depth: 1, 
-                             shallow: true,
-                             noTags: true],
-                            [$class: 'CheckoutOption', timeout: 30]
-                        ],
-                        userRemoteConfigs: [[
-                            url: 'https://github.com/kannankdevops/testing.git'
-                        ]]
-                    ])
-                }
+                git branch: 'main',
+                    url: 'https://github.com/kannankdevops/testing.git'
             }
         }
-        
-        stage('Build') {
+
+        stage('Install Dependencies') {
             steps {
-                echo 'Installing dependencies...'
+                echo 'Installing npm packages...'
                 bat 'npm install'
-                echo 'Building Docker image...'
-                bat 'docker build -t myapp:latest .'
             }
         }
-        
-        stage('Test') {
+
+        stage('Run Tests') {
             steps {
                 echo 'Running tests...'
                 bat 'npm test'
             }
         }
-        
-        stage('Push to Registry') {
+
+        stage('Build Docker Image') {
             steps {
-                echo 'Tagging and pushing image...'
-                bat 'docker tag myapp:latest localhost:5000/myapp:latest'
-                bat 'docker push localhost:5000/myapp:latest'
+                echo 'Building Docker image...'
+                bat 'docker build -t kkaann/myapp:${BUILD_NUMBER} .'
+                bat 'docker tag kkaann/myapp:${BUILD_NUMBER} kkaann/myapp:latest'
             }
         }
-        
-        stage('Deploy to Dev') {
+
+        stage('Show Docker Images') {
             steps {
-                echo 'Deploying to Kubernetes...'
-                bat 'kubectl apply -f k8s-deployment.yaml'
-                bat 'kubectl rollout status deployment/myapp -n jenkins'
+                echo 'Listing Docker images...'
+                bat 'docker images | findstr myapp'
             }
         }
-        
-        stage('Smoke Test') {
+
+        stage('Test Health Endpoint Locally') {
             steps {
-                echo 'Running smoke tests...'
+                echo 'Testing health endpoint...'
                 script {
-                    sleep(time: 10, unit: 'SECONDS')
-                    bat 'curl -s http://myapp.local/health'
+                    bat '''
+                        docker run -d --name test-myapp -p 3001:3000 kkaann/myapp:latest
+                        timeout /t 10 /nobreak
+                        curl -s http://localhost:3001/health
+                        docker stop test-myapp
+                        docker rm test-myapp
+                    '''
                 }
             }
         }
     }
-    
+
     post {
         success {
             echo '✅ Pipeline completed successfully!'
+            bat 'docker images | findstr myapp'
         }
         failure {
             echo '❌ Pipeline failed! Check logs.'
         }
         always {
-            echo 'Cleaning up workspace...'
-            cleanWs()
+            echo 'Cleaning up...'
+            bat 'docker system prune -f || exit 0'
         }
     }
 }
