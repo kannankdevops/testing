@@ -15,8 +15,8 @@ spec:
     spec:
       containers:
       - name: myapp
-        image: kkaann/myapp:9  # Default image, will be updated by Jenkins
-        imagePullPolicy: Never  # Use local image from Kind
+        image: kkaann/myapp:latest
+        imagePullPolicy: IfNotPresent
         ports:
         - containerPort: 3000
         livenessProbe:
