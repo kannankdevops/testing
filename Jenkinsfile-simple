@@ -1,0 +1,37 @@
+pipeline {
+    agent any
+    
+    stages {
+        stage('Checkout') {
+            steps {
+                echo 'Checking out code from GitHub...'
+                git branch: 'main', 
+                    url: 'https://github.com/kannankdevops/testing.git'
+            }
+        }
+        
+        stage('List Files') {
+            steps {
+                echo 'Listing files...'
+                bat 'dir'
+            }
+        }
+        
+        stage('Check Node') {
+            steps {
+                echo 'Checking Node.js installation...'
+                bat 'node --version'
+                bat 'npm --version'
+            }
+        }
+    }
+    
+    post {
+        success {
+            echo '✅ Simple pipeline completed!'
+        }
+        failure {
+            echo '❌ Pipeline failed!'
+        }
+    }
+}
