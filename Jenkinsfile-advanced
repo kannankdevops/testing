@@ -1,16 +1,16 @@
 pipeline {
     agent any
-    
+
     triggers {
         pollSCM('H/5 * * * *')
     }
-    
+
     options {
         timeout(time: 1, unit: 'HOURS')
         buildDiscarder(logRotator(numToKeepStr: '10'))
         skipStagesAfterUnstable()
     }
-    
+
     environment {
         DOCKER_IMAGE = 'kkaann/myapp'
         IMAGE_TAG = "${BUILD_NUMBER}"
@@ -18,7 +18,7 @@ pipeline {
         NAMESPACE = 'dev'
         KUBECONFIG = 'C:\\ProgramData\\Jenkins\\.jenkins\\kind-kubeconfig.yaml'
     }
-    
+
     stages {
         stage('Checkout') {
             steps {
@@ -26,7 +26,7 @@ pipeline {
                 checkout scm
             }
         }
-        
+
         stage('Build Docker Image') {
             steps {
                 echo '🐳 Building Docker image...'
@@ -38,7 +38,7 @@ pipeline {
                 }
             }
         }
-        
+
         stage('Test') {
             steps {
                 echo '✅ Running tests...'
@@ -46,7 +46,7 @@ pipeline {
                 bat 'npm test'
             }
         }
-        
+
         stage('Load Image to Kind') {
             steps {
                 echo '📦 Loading image to Kind cluster...'
@@ -55,7 +55,7 @@ pipeline {
                 }
             }
         }
-        
+
         stage('Deploy to Dev') {
             steps {
                 echo '🚀 Deploying to Kubernetes...'
@@ -64,17 +64,17 @@ pipeline {
                     bat """
                         kubectl get namespace ${NAMESPACE} || kubectl create namespace ${NAMESPACE}
                     """
-                    
+
                     // Apply manifests
                     bat """
                         kubectl apply -f environments/dev/deployment.yaml -n ${NAMESPACE}
                     """
-                    
+
                     // Update image tag
                     bat """
                         kubectl set image deployment/myapp myapp=${DOCKER_IMAGE}:${IMAGE_TAG} -n ${NAMESPACE}
                     """
-                    
+
                     // Wait for rollout
                     bat """
                         kubectl rollout status deployment/myapp -n ${NAMESPACE} --timeout=3m
@@ -82,30 +82,21 @@ pipeline {
                 }
             }
         }
-        
+
         stage('Smoke Test') {
             steps {
                 echo '🧪 Running smoke tests...'
                 script {
                     sleep(time: 5, unit: 'SECONDS')
-                    
-                    // Get pod name
-                    def podName = bat(
-                        script: "kubectl get pods -n ${NAMESPACE} -l app=myapp -o jsonpath=\"{.items[0].metadata.name}\"",
-                        returnStdout: true
-                    ).trim()
-                    
-                    echo "Testing pod: ${podName}"
-                    
-                    // Test health endpoint
+
+                    // Test health endpoint - simplified approach
                     bat """
-                        kubectl exec ${podName} -n ${NAMESPACE} -- wget -O- -q http://localhost:3000/health
-                    """
-                }
-            }
+                        powershell -Command "$podName = (kubectl get pods -n ${NAMESPACE} -l app=myapp -o jsonpath='{.items[0].metadata.name}'); Write-Host 'Testing pod:' $podName; kubectl exec $podName -n ${NAMESPACE} -- wget -O- -q http://localhost:3000/health"
+            """
         }
     }
-    
+}
+
     post {
         success {
             echo '✅ Pipeline completed successfully!'
