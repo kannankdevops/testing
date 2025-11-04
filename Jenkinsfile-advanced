@@ -1,102 +1,124 @@
 pipeline {
     agent any
-
+    
     triggers {
-        pollSCM('H/5 * * * *')
+        pollSCM('H/5 * * * *')  // Poll every 5 minutes
     }
-
+    
     options {
         timeout(time: 1, unit: 'HOURS')
         buildDiscarder(logRotator(numToKeepStr: '10'))
         skipStagesAfterUnstable()
-        timestamps()
     }
-
+    
+    environment {
+        DOCKER_IMAGE = 'kkaann/myapp'
+        IMAGE_TAG = "${BUILD_NUMBER}"
+        KIND_CLUSTER = 'kind'
+        NAMESPACE = 'dev'
+    }
+    
     stages {
         stage('Checkout') {
             steps {
-                echo 'Checking out code...'
-                git branch: 'main',
-                    url: 'https://github.com/kannankdevops/testing.git'
+                echo '📥 Checking out code...'
+                checkout scm
             }
         }
-
-        stage('Install Dependencies') {
-            steps {
-                echo 'Installing npm packages...'
-                bat 'npm install'
-            }
-        }
-
-        stage('Run Tests') {
-            steps {
-                echo 'Running tests...'
-                bat 'npm test'
-            }
-        }
-
+        
         stage('Build Docker Image') {
             steps {
-                echo 'Building Docker image...'
-                bat 'docker build -t kkaann/myapp:%BUILD_NUMBER% .'
-                bat 'docker tag kkaann/myapp:%BUILD_NUMBER% kkaann/myapp:latest'
-            }
-        }
-
-        stage('List Docker Images') {
-            steps {
-                echo 'Listing Docker images...'
-                bat 'docker images | findstr myapp'
-            }
-        }
-
-        stage('Test Container Locally') {
-            steps {
-                echo 'Testing Docker container...'
+                echo '🐳 Building Docker image...'
                 script {
-                    bat '''
-                        docker run -d --name test-myapp -p 3001:3000 kkaann/myapp:latest
-                        ping -n 11 127.0.0.1 >nul        # ✅ Better wait command for Windows
-                        curl -s http://localhost:3001/health || echo Health check pending
-                        docker stop test-myapp
-                        docker rm test-myapp
-                    '''
+                    bat """
+                        docker build -t ${DOCKER_IMAGE}:${IMAGE_TAG} .
+                        docker tag ${DOCKER_IMAGE}:${IMAGE_TAG} ${DOCKER_IMAGE}:latest
+                    """
                 }
             }
         }
-
-        stage('Push to Docker Hub') {
-            when {
-                expression { return false }  // Disabled for now
-            }
+        
+        stage('Test') {
             steps {
-                echo 'Pushing to Docker Hub...'
-                withCredentials([usernamePassword(
-                    credentialsId: 'github-credentials',
-                    usernameVariable: 'DOCKER_USER',
-                    passwordVariable: 'DOCKER_PASS'
-                )]) {
-                    bat '''
-                        echo %DOCKER_PASS% | docker login -u %DOCKER_USER% --password-stdin
-                        docker push kkaann/myapp:%BUILD_NUMBER%
-                        docker push kkaann/myapp:latest
-                    '''
+                echo '✅ Running tests...'
+                bat 'npm install'
+                bat 'npm test'
+            }
+        }
+        
+        stage('Load Image to Kind') {
+            steps {
+                echo '📦 Loading image to Kind cluster...'
+                script {
+                    bat "kind load docker-image ${DOCKER_IMAGE}:${IMAGE_TAG} --name ${KIND_CLUSTER}"
+                }
+            }
+        }
+        
+        stage('Deploy to Dev') {
+            steps {
+                echo '🚀 Deploying to Kubernetes...'
+                script {
+                    // Create namespace if it doesn't exist
+                    bat """
+                        kubectl get namespace ${NAMESPACE} || kubectl create namespace ${NAMESPACE}
+                    """
+                    
+                    // Update deployment with new image tag
+                    bat """
+                        kubectl set image deployment/myapp myapp=${DOCKER_IMAGE}:${IMAGE_TAG} -n ${NAMESPACE} --record || echo "Deployment not found, applying from file..."
+                    """
+                    
+                    // Apply manifests
+                    bat """
+                        kubectl apply -f environments/dev/deployment.yaml -n ${NAMESPACE}
+                    """
+                    
+                    // Wait for rollout
+                    bat """
+                        kubectl rollout status deployment/myapp -n ${NAMESPACE} --timeout=5m
+                    """
+                }
+            }
+        }
+        
+        stage('Smoke Test') {
+            steps {
+                echo '🧪 Running smoke tests...'
+                script {
+                    sleep(time: 10, unit: 'SECONDS')
+                    
+                    // Get pod name
+                    def podName = bat(
+                        script: "kubectl get pods -n ${NAMESPACE} -l app=myapp -o jsonpath=\"{.items[0].metadata.name}\"",
+                        returnStdout: true
+                    ).trim()
+                    
+                    echo "Testing pod: ${podName}"
+                    
+                    // Test health endpoint via port-forward
+                    bat """
+                        kubectl exec ${podName} -n ${NAMESPACE} -- curl -s http://localhost:3000/health
+                    """
                 }
             }
         }
     }
-
+    
     post {
         success {
             echo '✅ Pipeline completed successfully!'
-            bat 'docker images | findstr myapp'
+            echo "Deployed: ${DOCKER_IMAGE}:${IMAGE_TAG}"
         }
         failure {
-            echo '❌ Pipeline failed! Check logs.'
+            echo '❌ Pipeline failed! Check logs above.'
         }
         always {
-            echo 'Cleaning up...'
-            bat 'docker system prune -f || exit /b 0'
+            echo '🧹 Cleaning up...'
+            // Clean old Docker images
+            bat """
+                docker image prune -f
+            """
         }
     }
 }
