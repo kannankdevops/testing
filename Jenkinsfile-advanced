@@ -56,7 +56,7 @@ pipeline {
                 script {
                     bat '''
                         docker run -d --name test-myapp -p 3001:3000 kkaann/myapp:latest
-                        timeout /t 10 /nobreak >nul
+                        ping -n 11 127.0.0.1 >nul        # ✅ Better wait command for Windows
                         curl -s http://localhost:3001/health || echo Health check pending
                         docker stop test-myapp
                         docker rm test-myapp
