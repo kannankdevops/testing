@@ -60,22 +60,18 @@ pipeline {
             steps {
                 echo '🚀 Deploying to Kubernetes...'
                 script {
-                    // Create namespace if it doesn't exist
                     bat """
                         kubectl get namespace ${NAMESPACE} || kubectl create namespace ${NAMESPACE}
                     """
 
-                    // Apply manifests
                     bat """
                         kubectl apply -f environments/dev/deployment.yaml -n ${NAMESPACE}
                     """
 
-                    // Update image tag
                     bat """
                         kubectl set image deployment/myapp myapp=${DOCKER_IMAGE}:${IMAGE_TAG} -n ${NAMESPACE}
                     """
 
-                    // Wait for rollout
                     bat """
                         kubectl rollout status deployment/myapp -n ${NAMESPACE} --timeout=3m
                     """
@@ -89,7 +85,6 @@ pipeline {
                 script {
                     sleep(time: 5, unit: 'SECONDS')
 
-                    // Test health endpoint using PowerShell
                     bat """
                         powershell -Command "\$podName = (kubectl get pods -n ${NAMESPACE} -l app=myapp -o jsonpath='{.items[0].metadata.name}'); Write-Host 'Testing pod:' \$podName; kubectl exec \$podName -n ${NAMESPACE} -- wget -O- -q http://localhost:3000/health"
                     """
