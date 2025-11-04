@@ -89,13 +89,14 @@ pipeline {
                 script {
                     sleep(time: 5, unit: 'SECONDS')
 
-                    // Test health endpoint - simplified approach
+                    // Test health endpoint using PowerShell
                     bat """
-                        powershell -Command "$podName = (kubectl get pods -n ${NAMESPACE} -l app=myapp -o jsonpath='{.items[0].metadata.name}'); Write-Host 'Testing pod:' $podName; kubectl exec $podName -n ${NAMESPACE} -- wget -O- -q http://localhost:3000/health"
-            """
+                        powershell -Command "\$podName = (kubectl get pods -n ${NAMESPACE} -l app=myapp -o jsonpath='{.items[0].metadata.name}'); Write-Host 'Testing pod:' \$podName; kubectl exec \$podName -n ${NAMESPACE} -- wget -O- -q http://localhost:3000/health"
+                    """
+                }
+            }
         }
     }
-}
 
     post {
         success {
