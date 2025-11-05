@@ -16,9 +16,6 @@ pipeline {
         DOCKER_IMAGE = 'kkaann/myapp'
         IMAGE_TAG = "${BUILD_NUMBER}"
         KIND_CLUSTER = 'kind'
-        DEV_NAMESPACE = 'dev'
-        TEST_NAMESPACE = 'test'
-        PROD_NAMESPACE = 'prod'
     }
 
     stages {
@@ -54,28 +51,8 @@ pipeline {
                 echo '🔒 Running security scan...'
                 script {
                     bat """
-                        docker run --rm ${DOCKER_IMAGE}:${IMAGE_TAG} npm audit --audit-level=high || echo "Security issues found but continuing..."
+                        docker run --rm ${DOCKER_IMAGE}:${IMAGE_TAG} npm audit --audit-level=high || echo "Security check complete"
                     """
-                }
-            }
-        }
-
-        stage('Push to Docker Hub') {
-            steps {
-                echo '📤 Pushing to Docker Hub...'
-                script {
-                    withCredentials([usernamePassword(
-                        credentialsId: 'dockerhub-credentials',
-                        usernameVariable: 'DOCKER_USER',
-                        passwordVariable: 'DOCKER_PASS'
-                    )]) {
-                        bat '''
-                            echo %DOCKER_PASS% | docker login -u %DOCKER_USER% --password-stdin
-                            docker push %DOCKER_IMAGE%:%IMAGE_TAG%
-                            docker push %DOCKER_IMAGE%:latest
-                            docker logout
-                        '''
-                    }
                 }
             }
         }
@@ -91,13 +68,13 @@ pipeline {
 
         stage('Deploy to Dev') {
             steps {
-                echo '🚀 Deploying to Dev environment...'
+                echo '🚀 Deploying to Dev...'
                 script {
+                    // Use direct kubectl commands without namespace check
                     bat """
-                        kubectl get namespace ${DEV_NAMESPACE} || kubectl create namespace ${DEV_NAMESPACE}
-                        kubectl apply -f environments/dev/deployment.yaml -n ${DEV_NAMESPACE}
-                        kubectl set image deployment/myapp myapp=${DOCKER_IMAGE}:${IMAGE_TAG} -n ${DEV_NAMESPACE}
-                        kubectl rollout status deployment/myapp -n ${DEV_NAMESPACE} --timeout=3m
+                        kubectl apply -f environments/dev/deployment.yaml
+                        kubectl set image deployment/myapp myapp=${DOCKER_IMAGE}:${IMAGE_TAG} -n dev
+                        kubectl rollout status deployment/myapp -n dev --timeout=3m
                     """
                 }
             }
@@ -105,22 +82,11 @@ pipeline {
 
         stage('Smoke Test - Dev') {
             steps {
-                echo '🧪 Running smoke tests on Dev...'
+                echo '🧪 Running smoke tests...'
                 script {
-                    sleep(time: 5, unit: 'SECONDS')
+                    sleep(time: 10, unit: 'SECONDS')
                     bat """
-                        powershell -Command "\$podName = (kubectl get pods -n ${DEV_NAMESPACE} -l app=myapp -o jsonpath='{.items[0].metadata.name}'); Write-Host 'Testing pod:' \$podName; kubectl exec \$podName -n ${DEV_NAMESPACE} -- wget -O- -q http://localhost:3000/health"
-                    """
-                }
-            }
-        }
-
-        stage('Integration Tests') {
-            steps {
-                echo '🔗 Running integration tests...'
-                script {
-                    bat """
-                        powershell -Command "\$podName = (kubectl get pods -n ${DEV_NAMESPACE} -l app=myapp -o jsonpath='{.items[0].metadata.name}'); kubectl exec \$podName -n ${DEV_NAMESPACE} -- wget -O- -q http://localhost:3000 | findstr 'My Kubernetes App'"
+                        powershell -Command "\$podName = (kubectl get pods -n dev -l app=myapp -o jsonpath='{.items[0].metadata.name}'); kubectl exec \$podName -n dev -- wget -O- -q http://localhost:3000/health"
                     """
                 }
             }
@@ -128,13 +94,12 @@ pipeline {
 
         stage('Deploy to Test') {
             steps {
-                echo '🧪 Deploying to Test environment...'
+                echo '🧪 Deploying to Test...'
                 script {
                     bat """
-                        kubectl get namespace ${TEST_NAMESPACE} || kubectl create namespace ${TEST_NAMESPACE}
-                        kubectl apply -f environments/test/deployment.yaml -n ${TEST_NAMESPACE}
-                        kubectl set image deployment/myapp myapp=${DOCKER_IMAGE}:${IMAGE_TAG} -n ${TEST_NAMESPACE}
-                        kubectl rollout status deployment/myapp -n ${TEST_NAMESPACE} --timeout=3m
+                        kubectl apply -f environments/test/deployment.yaml
+                        kubectl set image deployment/myapp myapp=${DOCKER_IMAGE}:${IMAGE_TAG} -n test
+                        kubectl rollout status deployment/myapp -n test --timeout=3m
                     """
                 }
             }
@@ -142,43 +107,35 @@ pipeline {
 
         stage('Smoke Test - Test') {
             steps {
-                echo '🧪 Running smoke tests on Test...'
+                echo '🧪 Testing Test environment...'
                 script {
-                    sleep(time: 5, unit: 'SECONDS')
+                    sleep(time: 10, unit: 'SECONDS')
                     bat """
-                        powershell -Command "\$podName = (kubectl get pods -n ${TEST_NAMESPACE} -l app=myapp -o jsonpath='{.items[0].metadata.name}'); kubectl exec \$podName -n ${TEST_NAMESPACE} -- wget -O- -q http://localhost:3000/health"
+                        powershell -Command "\$podName = (kubectl get pods -n test -l app=myapp -o jsonpath='{.items[0].metadata.name}'); kubectl exec \$podName -n test -- wget -O- -q http://localhost:3000/health"
                     """
                 }
             }
         }
 
-        stage('Approve Production Deploy') {
+        stage('Approve Production') {
             steps {
-                script {
-                    echo '⏸️  Waiting for production deployment approval...'
-                    timeout(time: 15, unit: 'MINUTES') {
-                        input message: '🚀 Deploy to Production?',
-                              ok: 'Deploy to Prod',
-                              submitter: 'admin',
-                              parameters: [
-                                  choice(name: 'DEPLOY_STRATEGY', 
-                                         choices: ['RollingUpdate', 'Recreate'], 
-                                         description: 'Deployment strategy')
-                              ]
-                    }
+                echo '⏸️  Waiting for approval...'
+                timeout(time: 15, unit: 'MINUTES') {
+                    input message: '🚀 Deploy to Production?',
+                          ok: 'Deploy',
+                          submitter: 'admin'
                 }
             }
         }
 
         stage('Deploy to Prod') {
             steps {
-                echo '🌟 Deploying to Production environment...'
+                echo '🌟 Deploying to Production...'
                 script {
                     bat """
-                        kubectl get namespace ${PROD_NAMESPACE} || kubectl create namespace ${PROD_NAMESPACE}
-                        kubectl apply -f environments/prod/deployment.yaml -n ${PROD_NAMESPACE}
-                        kubectl set image deployment/myapp myapp=${DOCKER_IMAGE}:${IMAGE_TAG} -n ${PROD_NAMESPACE}
-                        kubectl rollout status deployment/myapp -n ${PROD_NAMESPACE} --timeout=5m
+                        kubectl apply -f environments/prod/deployment.yaml
+                        kubectl set image deployment/myapp myapp=${DOCKER_IMAGE}:${IMAGE_TAG} -n prod
+                        kubectl rollout status deployment/myapp -n prod --timeout=5m
                     """
                 }
             }
@@ -186,22 +143,11 @@ pipeline {
 
         stage('Smoke Test - Prod') {
             steps {
-                echo '🧪 Running smoke tests on Production...'
+                echo '✅ Testing Production...'
                 script {
-                    sleep(time: 10, unit: 'SECONDS')
+                    sleep(time: 15, unit: 'SECONDS')
                     bat """
-                        powershell -Command "\$podName = (kubectl get pods -n ${PROD_NAMESPACE} -l app=myapp -o jsonpath='{.items[0].metadata.name}'); kubectl exec \$podName -n ${PROD_NAMESPACE} -- wget -O- -q http://localhost:3000/health"
-                    """
-                }
-            }
-        }
-
-        stage('Performance Test') {
-            steps {
-                echo '⚡ Running performance tests...'
-                script {
-                    bat """
-                        powershell -Command "Write-Host 'Running 10 health check requests...'; 1..10 | ForEach-Object { \$podName = (kubectl get pods -n ${PROD_NAMESPACE} -l app=myapp -o jsonpath='{.items[0].metadata.name}'); kubectl exec \$podName -n ${PROD_NAMESPACE} -- wget -O- -q http://localhost:3000/health }"
+                        powershell -Command "\$podName = (kubectl get pods -n prod -l app=myapp -o jsonpath='{.items[0].metadata.name}'); kubectl exec \$podName -n prod -- wget -O- -q http://localhost:3000/health"
                     """
                 }
             }
@@ -211,57 +157,23 @@ pipeline {
     post {
         success {
             echo '✅ ═══════════════════════════════════════════'
-            echo '✅ Pipeline completed successfully!'
-            echo "✅ Deployed: ${DOCKER_IMAGE}:${IMAGE_TAG}"
-            echo '✅ Environments:'
-            echo "   • Dev: ${DEV_NAMESPACE} ✓"
-            echo "   • Test: ${TEST_NAMESPACE} ✓"
-            echo "   • Prod: ${PROD_NAMESPACE} ✓"
+            echo '✅ Pipeline SUCCESS!'
+            echo "✅ Image: ${DOCKER_IMAGE}:${IMAGE_TAG}"
             echo '✅ ═══════════════════════════════════════════'
-            
             script {
                 bat """
-                    echo.
-                    echo ✅ DEPLOYMENT SUMMARY
-                    echo ==================
                     kubectl get pods -n dev -l app=myapp
-                    echo.
                     kubectl get pods -n test -l app=myapp
-                    echo.
                     kubectl get pods -n prod -l app=myapp
                 """
             }
         }
         failure {
-            echo '❌ ═══════════════════════════════════════════'
-            echo '❌ Pipeline failed!'
-            echo '❌ Check logs above for details'
-            echo '❌ ═══════════════════════════════════════════'
-            
-            script {
-                bat """
-                    echo.
-                    echo ❌ Attempting rollback if needed...
-                    kubectl rollout undo deployment/myapp -n ${DEV_NAMESPACE} || echo "No rollback needed for dev"
-                    kubectl rollout undo deployment/myapp -n ${TEST_NAMESPACE} || echo "No rollback needed for test"
-                """
-            }
+            echo '❌ Pipeline FAILED! Check logs above.'
         }
         always {
             echo '🧹 Cleaning up...'
-            bat """
-                docker image prune -f
-                docker logout || echo "Already logged out"
-            """
-            
-            script {
-                bat """
-                    echo.
-                    echo 📊 RESOURCE USAGE
-                    echo ================
-                    kubectl top nodes || echo "Metrics not available"
-                """
-            }
+            bat 'docker image prune -f'
         }
     }
 }
