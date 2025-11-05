@@ -74,7 +74,6 @@ pipeline {
             steps {
                 echo '📋 Ensuring namespaces exist...'
                 script {
-                    // Use simpler commands without piping
                     bat """
                         kubectl create namespace dev || echo "dev namespace already exists"
                         kubectl create namespace test || echo "test namespace already exists"
