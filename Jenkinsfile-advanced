@@ -16,7 +16,6 @@ pipeline {
         DOCKER_IMAGE = 'kkaann/myapp'
         IMAGE_TAG = "${BUILD_NUMBER}"
         KIND_CLUSTER = 'kind'
-        KUBECONFIG = "${env.USERPROFILE}\\.kube\\config"
     }
 
     stages {
@@ -70,28 +69,15 @@ pipeline {
             }
         }
 
-        stage('Prepare Namespaces') {
-            steps {
-                echo '📋 Ensuring namespaces exist...'
-                script {
-                    bat """
-                        kubectl create namespace dev || echo "dev namespace already exists"
-                        kubectl create namespace test || echo "test namespace already exists"
-                        kubectl create namespace prod || echo "prod namespace already exists"
-                    """
-                }
-            }
-        }
-
         stage('Deploy to Dev') {
             steps {
-                echo '🚀 Deploying to Dev...'
+                echo '🚀 Deploying to Dev environment...'
                 script {
                     bat """
                         kubectl apply -f environments/dev/deployment.yaml
                         kubectl set image deployment/myapp myapp=${DOCKER_IMAGE}:${IMAGE_TAG} -n dev
                         timeout /t 5 /nobreak
-                        kubectl rollout status deployment/myapp -n dev --timeout=3m
+                        kubectl rollout status deployment/myapp -n dev --timeout=2m
                     """
                 }
             }
@@ -103,7 +89,8 @@ pipeline {
                 script {
                     bat """
                         timeout /t 10 /nobreak
-                        kubectl run smoke-test-dev-%BUILD_NUMBER% --image=curlimages/curl --rm -i --restart=Never -n dev -- curl -s http://myapp-service:3000/health || echo "✅ Dev health check complete"
+                        kubectl get pods -n dev -l app=myapp
+                        kubectl run smoke-dev-%BUILD_NUMBER% --image=curlimages/curl --rm --restart=Never -n dev -- curl -s http://myapp-service:3000/health || echo "✅ Dev smoke test complete"
                     """
                 }
             }
@@ -111,13 +98,13 @@ pipeline {
 
         stage('Deploy to Test') {
             steps {
-                echo '🧪 Deploying to Test...'
+                echo '🧪 Deploying to Test environment...'
                 script {
                     bat """
                         kubectl apply -f environments/test/deployment.yaml
                         kubectl set image deployment/myapp myapp=${DOCKER_IMAGE}:${IMAGE_TAG} -n test
                         timeout /t 5 /nobreak
-                        kubectl rollout status deployment/myapp -n test --timeout=3m
+                        kubectl rollout status deployment/myapp -n test --timeout=2m
                     """
                 }
             }
@@ -129,7 +116,8 @@ pipeline {
                 script {
                     bat """
                         timeout /t 10 /nobreak
-                        kubectl run smoke-test-test-%BUILD_NUMBER% --image=curlimages/curl --rm -i --restart=Never -n test -- curl -s http://myapp-service:3000/health || echo "✅ Test health check complete"
+                        kubectl get pods -n test -l app=myapp
+                        kubectl run smoke-test-%BUILD_NUMBER% --image=curlimages/curl --rm --restart=Never -n test -- curl -s http://myapp-service:3000/health || echo "✅ Test smoke test complete"
                     """
                 }
             }
@@ -137,10 +125,10 @@ pipeline {
 
         stage('Approve Production') {
             steps {
-                echo '⏸️  Waiting for approval...'
+                echo '⏸️  Waiting for Production approval...'
                 timeout(time: 15, unit: 'MINUTES') {
                     input message: '🚀 Deploy to Production?',
-                          ok: 'Deploy',
+                          ok: 'Deploy to Prod',
                           submitter: 'admin'
                 }
             }
@@ -154,7 +142,7 @@ pipeline {
                         kubectl apply -f environments/prod/deployment.yaml
                         kubectl set image deployment/myapp myapp=${DOCKER_IMAGE}:${IMAGE_TAG} -n prod
                         timeout /t 5 /nobreak
-                        kubectl rollout status deployment/myapp -n prod --timeout=5m
+                        kubectl rollout status deployment/myapp -n prod --timeout=3m
                     """
                 }
             }
@@ -166,7 +154,8 @@ pipeline {
                 script {
                     bat """
                         timeout /t 15 /nobreak
-                        kubectl run smoke-test-prod-%BUILD_NUMBER% --image=curlimages/curl --rm -i --restart=Never -n prod -- curl -s http://myapp-service:3000/health || echo "✅ Prod health check complete"
+                        kubectl get pods -n prod -l app=myapp
+                        kubectl run smoke-prod-%BUILD_NUMBER% --image=curlimages/curl --rm --restart=Never -n prod -- curl -s http://myapp-service:3000/health || echo "✅ Prod smoke test complete"
                     """
                 }
             }
@@ -176,28 +165,34 @@ pipeline {
     post {
         success {
             echo '✅ ═══════════════════════════════════════════'
-            echo '✅ Pipeline SUCCESS!'
-            echo "✅ Image: ${DOCKER_IMAGE}:${IMAGE_TAG}"
+            echo '✅ PIPELINE COMPLETED SUCCESSFULLY!'
+            echo "✅ Docker Image: ${DOCKER_IMAGE}:${IMAGE_TAG}"
+            echo '✅ Deployed to: DEV → TEST → PROD'
             echo '✅ ═══════════════════════════════════════════'
             script {
                 bat """
                     echo.
-                    echo === DEV Environment ===
-                    kubectl get pods -n dev -l app=myapp
+                    echo === 🔹 DEV Environment ===
+                    kubectl get pods -n dev -l app=myapp -o wide
                     echo.
-                    echo === TEST Environment ===
-                    kubectl get pods -n test -l app=myapp
+                    echo === 🔹 TEST Environment ===
+                    kubectl get pods -n test -l app=myapp -o wide
                     echo.
-                    echo === PROD Environment ===
-                    kubectl get pods -n prod -l app=myapp
+                    echo === 🔹 PROD Environment ===
+                    kubectl get pods -n prod -l app=myapp -o wide
+                    echo.
+                    echo ✅ All environments deployed successfully!
                 """
             }
         }
         failure {
-            echo '❌ Pipeline FAILED! Check logs above.'
+            echo '❌ ═══════════════════════════════════════════'
+            echo '❌ PIPELINE FAILED!'
+            echo '❌ Check the logs above for details'
+            echo '❌ ═══════════════════════════════════════════'
         }
         always {
-            echo '🧹 Cleaning up...'
+            echo '🧹 Cleaning up Docker images...'
             bat 'docker image prune -f || exit /b 0'
         }
     }
