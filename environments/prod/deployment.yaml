@@ -12,6 +12,10 @@ spec:
     metadata:
       labels:
         app: myapp
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "3000"
+        prometheus.io/path: "/metrics"
     spec:
       containers:
       - name: myapp
@@ -19,6 +23,7 @@ spec:
         imagePullPolicy: IfNotPresent
         ports:
         - containerPort: 3000
+          name: http
         livenessProbe:
           httpGet:
             path: /health
@@ -37,11 +42,16 @@ kind: Service
 metadata:
   name: myapp-service
   namespace: prod
+  annotations:
+    prometheus.io/scrape: "true"
+    prometheus.io/port: "3000"
+    prometheus.io/path: "/metrics"
 spec:
   selector:
     app: myapp
   ports:
   - protocol: TCP
-    port: 3000
+    port: 80
     targetPort: 3000
+    name: http
   type: ClusterIP
