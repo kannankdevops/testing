@@ -92,14 +92,13 @@ pipeline {
                         kubectl get pods -n dev -l app=myapp
                     """
                     
-                    // Get pod name and test health
-                    def podName = bat(
-                        script: "kubectl get pods -n dev -l app=myapp -o jsonpath=\"{.items[0].metadata.name}\"",
-                        returnStdout: true
-                    ).trim()
-                    
+                    // Save pod name to file and read it
+                    bat "kubectl get pods -n dev -l app=myapp -o jsonpath=\"{.items[0].metadata.name}\" > pod.txt"
+                    def podName = readFile('pod.txt').trim()
                     echo "Testing pod: ${podName}"
+                    
                     bat "kubectl exec ${podName} -n dev -- wget -O- -q http://localhost:3000/health"
+                    echo "✅ Dev smoke test passed!"
                 }
             }
         }
@@ -126,12 +125,12 @@ pipeline {
                         kubectl get pods -n test -l app=myapp
                     """
                     
-                    def podName = bat(
-                        script: "kubectl get pods -n test -l app=myapp -o jsonpath=\"{.items[0].metadata.name}\"",
-                        returnStdout: true
-                    ).trim()
+                    bat "kubectl get pods -n test -l app=myapp -o jsonpath=\"{.items[0].metadata.name}\" > pod.txt"
+                    def podName = readFile('pod.txt').trim()
+                    echo "Testing pod: ${podName}"
                     
                     bat "kubectl exec ${podName} -n test -- wget -O- -q http://localhost:3000/health"
+                    echo "✅ Test smoke test passed!"
                 }
             }
         }
@@ -165,16 +164,16 @@ pipeline {
                 echo '✅ Testing Production...'
                 script {
                     bat """
-                        kubectl wait --for=condition=ready pod -l app=myapp -n prod --timeout=60s
+                        kubectl wait --for=condition=ready pod -l app=myapp -n prod --timeout=90s
                         kubectl get pods -n prod -l app=myapp
                     """
                     
-                    def podName = bat(
-                        script: "kubectl get pods -n prod -l app=myapp -o jsonpath=\"{.items[0].metadata.name}\"",
-                        returnStdout: true
-                    ).trim()
+                    bat "kubectl get pods -n prod -l app=myapp -o jsonpath=\"{.items[0].metadata.name}\" > pod.txt"
+                    def podName = readFile('pod.txt').trim()
+                    echo "Testing pod: ${podName}"
                     
                     bat "kubectl exec ${podName} -n prod -- wget -O- -q http://localhost:3000/health"
+                    echo "✅ Prod smoke test passed!"
                 }
             }
         }
