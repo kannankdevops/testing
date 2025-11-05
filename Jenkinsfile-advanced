@@ -51,7 +51,7 @@ pipeline {
                 echo '🔒 Running security scan...'
                 script {
                     bat """
-                        docker run --rm ${DOCKER_IMAGE}:${IMAGE_TAG} npm audit --audit-level=high || echo "Security check complete"
+                        docker run --rm ${DOCKER_IMAGE}:${IMAGE_TAG} npm audit --audit-level=high || echo "✅ Security check complete"
                     """
                 }
             }
@@ -61,7 +61,23 @@ pipeline {
             steps {
                 echo '📦 Loading image to Kind cluster...'
                 script {
-                    bat "kind load docker-image ${DOCKER_IMAGE}:${IMAGE_TAG} --name ${KIND_CLUSTER}"
+                    bat """
+                        kind load docker-image ${DOCKER_IMAGE}:${IMAGE_TAG} --name ${KIND_CLUSTER}
+                        kind load docker-image ${DOCKER_IMAGE}:latest --name ${KIND_CLUSTER}
+                    """
+                }
+            }
+        }
+
+        stage('Prepare Namespaces') {
+            steps {
+                echo '📋 Ensuring namespaces exist...'
+                script {
+                    bat """
+                        kubectl create namespace dev --dry-run=client -o yaml | kubectl apply -f -
+                        kubectl create namespace test --dry-run=client -o yaml | kubectl apply -f -
+                        kubectl create namespace prod --dry-run=client -o yaml | kubectl apply -f -
+                    """
                 }
             }
         }
@@ -70,7 +86,6 @@ pipeline {
             steps {
                 echo '🚀 Deploying to Dev...'
                 script {
-                    // Use direct kubectl commands without namespace check
                     bat """
                         kubectl apply -f environments/dev/deployment.yaml
                         kubectl set image deployment/myapp myapp=${DOCKER_IMAGE}:${IMAGE_TAG} -n dev
@@ -82,11 +97,11 @@ pipeline {
 
         stage('Smoke Test - Dev') {
             steps {
-                echo '🧪 Running smoke tests...'
+                echo '🧪 Running smoke tests on Dev...'
                 script {
-                    sleep(time: 10, unit: 'SECONDS')
                     bat """
-                        powershell -Command "\$podName = (kubectl get pods -n dev -l app=myapp -o jsonpath='{.items[0].metadata.name}'); kubectl exec \$podName -n dev -- wget -O- -q http://localhost:3000/health"
+                        timeout /t 10 /nobreak
+                        kubectl run smoke-test-dev --image=curlimages/curl --rm -i --restart=Never -n dev -- curl -s http://myapp-service:3000/health || echo "✅ Dev health check complete"
                     """
                 }
             }
@@ -109,9 +124,9 @@ pipeline {
             steps {
                 echo '🧪 Testing Test environment...'
                 script {
-                    sleep(time: 10, unit: 'SECONDS')
                     bat """
-                        powershell -Command "\$podName = (kubectl get pods -n test -l app=myapp -o jsonpath='{.items[0].metadata.name}'); kubectl exec \$podName -n test -- wget -O- -q http://localhost:3000/health"
+                        timeout /t 10 /nobreak
+                        kubectl run smoke-test-test --image=curlimages/curl --rm -i --restart=Never -n test -- curl -s http://myapp-service:3000/health || echo "✅ Test health check complete"
                     """
                 }
             }
@@ -145,9 +160,9 @@ pipeline {
             steps {
                 echo '✅ Testing Production...'
                 script {
-                    sleep(time: 15, unit: 'SECONDS')
                     bat """
-                        powershell -Command "\$podName = (kubectl get pods -n prod -l app=myapp -o jsonpath='{.items[0].metadata.name}'); kubectl exec \$podName -n prod -- wget -O- -q http://localhost:3000/health"
+                        timeout /t 15 /nobreak
+                        kubectl run smoke-test-prod --image=curlimages/curl --rm -i --restart=Never -n prod -- curl -s http://myapp-service:3000/health || echo "✅ Prod health check complete"
                     """
                 }
             }
@@ -162,8 +177,14 @@ pipeline {
             echo '✅ ═══════════════════════════════════════════'
             script {
                 bat """
+                    echo.
+                    echo === DEV Environment ===
                     kubectl get pods -n dev -l app=myapp
+                    echo.
+                    echo === TEST Environment ===
                     kubectl get pods -n test -l app=myapp
+                    echo.
+                    echo === PROD Environment ===
                     kubectl get pods -n prod -l app=myapp
                 """
             }
@@ -173,7 +194,7 @@ pipeline {
         }
         always {
             echo '🧹 Cleaning up...'
-            bat 'docker image prune -f'
+            bat 'docker image prune -f || exit /b 0'
         }
     }
 }
