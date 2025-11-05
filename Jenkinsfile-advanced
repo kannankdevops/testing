@@ -16,6 +16,7 @@ pipeline {
         DOCKER_IMAGE = 'kkaann/myapp'
         IMAGE_TAG = "${BUILD_NUMBER}"
         KIND_CLUSTER = 'kind'
+        KUBECONFIG = "${env.USERPROFILE}\\.kube\\config"
     }
 
     stages {
@@ -73,10 +74,11 @@ pipeline {
             steps {
                 echo '📋 Ensuring namespaces exist...'
                 script {
+                    // Use simpler commands without piping
                     bat """
-                        kubectl create namespace dev --dry-run=client -o yaml | kubectl apply -f -
-                        kubectl create namespace test --dry-run=client -o yaml | kubectl apply -f -
-                        kubectl create namespace prod --dry-run=client -o yaml | kubectl apply -f -
+                        kubectl create namespace dev || echo "dev namespace already exists"
+                        kubectl create namespace test || echo "test namespace already exists"
+                        kubectl create namespace prod || echo "prod namespace already exists"
                     """
                 }
             }
@@ -89,6 +91,7 @@ pipeline {
                     bat """
                         kubectl apply -f environments/dev/deployment.yaml
                         kubectl set image deployment/myapp myapp=${DOCKER_IMAGE}:${IMAGE_TAG} -n dev
+                        timeout /t 5 /nobreak
                         kubectl rollout status deployment/myapp -n dev --timeout=3m
                     """
                 }
@@ -101,7 +104,7 @@ pipeline {
                 script {
                     bat """
                         timeout /t 10 /nobreak
-                        kubectl run smoke-test-dev --image=curlimages/curl --rm -i --restart=Never -n dev -- curl -s http://myapp-service:3000/health || echo "✅ Dev health check complete"
+                        kubectl run smoke-test-dev-%BUILD_NUMBER% --image=curlimages/curl --rm -i --restart=Never -n dev -- curl -s http://myapp-service:3000/health || echo "✅ Dev health check complete"
                     """
                 }
             }
@@ -114,6 +117,7 @@ pipeline {
                     bat """
                         kubectl apply -f environments/test/deployment.yaml
                         kubectl set image deployment/myapp myapp=${DOCKER_IMAGE}:${IMAGE_TAG} -n test
+                        timeout /t 5 /nobreak
                         kubectl rollout status deployment/myapp -n test --timeout=3m
                     """
                 }
@@ -126,7 +130,7 @@ pipeline {
                 script {
                     bat """
                         timeout /t 10 /nobreak
-                        kubectl run smoke-test-test --image=curlimages/curl --rm -i --restart=Never -n test -- curl -s http://myapp-service:3000/health || echo "✅ Test health check complete"
+                        kubectl run smoke-test-test-%BUILD_NUMBER% --image=curlimages/curl --rm -i --restart=Never -n test -- curl -s http://myapp-service:3000/health || echo "✅ Test health check complete"
                     """
                 }
             }
@@ -150,6 +154,7 @@ pipeline {
                     bat """
                         kubectl apply -f environments/prod/deployment.yaml
                         kubectl set image deployment/myapp myapp=${DOCKER_IMAGE}:${IMAGE_TAG} -n prod
+                        timeout /t 5 /nobreak
                         kubectl rollout status deployment/myapp -n prod --timeout=5m
                     """
                 }
@@ -162,7 +167,7 @@ pipeline {
                 script {
                     bat """
                         timeout /t 15 /nobreak
-                        kubectl run smoke-test-prod --image=curlimages/curl --rm -i --restart=Never -n prod -- curl -s http://myapp-service:3000/health || echo "✅ Prod health check complete"
+                        kubectl run smoke-test-prod-%BUILD_NUMBER% --image=curlimages/curl --rm -i --restart=Never -n prod -- curl -s http://myapp-service:3000/health || echo "✅ Prod health check complete"
                     """
                 }
             }
