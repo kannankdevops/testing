@@ -92,7 +92,6 @@ pipeline {
                         kubectl get pods -n dev -l app=myapp
                     """
                     
-                    // Save pod name to file and read it
                     bat "kubectl get pods -n dev -l app=myapp -o jsonpath=\"{.items[0].metadata.name}\" > pod.txt"
                     def podName = readFile('pod.txt').trim()
                     echo "Testing pod: ${podName}"
@@ -131,17 +130,6 @@ pipeline {
                     
                     bat "kubectl exec ${podName} -n test -- wget -O- -q http://localhost:3000/health"
                     echo "✅ Test smoke test passed!"
-                }
-            }
-        }
-
-        stage('Approve Production') {
-            steps {
-                echo '⏸️  Waiting for Production approval...'
-                timeout(time: 15, unit: 'MINUTES') {
-                    input message: '🚀 Deploy to Production?',
-                          ok: 'Deploy to Prod',
-                          submitter: 'admin'
                 }
             }
         }
