@@ -16,6 +16,7 @@ pipeline {
         DOCKER_IMAGE = 'kkaann/myapp'
         IMAGE_TAG = "${BUILD_NUMBER}"
         KIND_CLUSTER = 'kind'
+        KUBECONFIG = 'C:\\ProgramData\\Jenkins\\.jenkins\\kind-kubeconfig.yaml'
     }
 
     stages {
@@ -76,7 +77,6 @@ pipeline {
                     bat """
                         kubectl apply -f environments/dev/deployment.yaml
                         kubectl set image deployment/myapp myapp=${DOCKER_IMAGE}:${IMAGE_TAG} -n dev
-                        timeout /t 5 /nobreak
                         kubectl rollout status deployment/myapp -n dev --timeout=2m
                     """
                 }
@@ -88,10 +88,18 @@ pipeline {
                 echo '🧪 Running smoke tests on Dev...'
                 script {
                     bat """
-                        timeout /t 10 /nobreak
+                        kubectl wait --for=condition=ready pod -l app=myapp -n dev --timeout=60s
                         kubectl get pods -n dev -l app=myapp
-                        kubectl run smoke-dev-%BUILD_NUMBER% --image=curlimages/curl --rm --restart=Never -n dev -- curl -s http://myapp-service:3000/health || echo "✅ Dev smoke test complete"
                     """
+                    
+                    // Get pod name and test health
+                    def podName = bat(
+                        script: "kubectl get pods -n dev -l app=myapp -o jsonpath=\"{.items[0].metadata.name}\"",
+                        returnStdout: true
+                    ).trim()
+                    
+                    echo "Testing pod: ${podName}"
+                    bat "kubectl exec ${podName} -n dev -- wget -O- -q http://localhost:3000/health"
                 }
             }
         }
@@ -103,7 +111,6 @@ pipeline {
                     bat """
                         kubectl apply -f environments/test/deployment.yaml
                         kubectl set image deployment/myapp myapp=${DOCKER_IMAGE}:${IMAGE_TAG} -n test
-                        timeout /t 5 /nobreak
                         kubectl rollout status deployment/myapp -n test --timeout=2m
                     """
                 }
@@ -115,10 +122,16 @@ pipeline {
                 echo '🧪 Testing Test environment...'
                 script {
                     bat """
-                        timeout /t 10 /nobreak
+                        kubectl wait --for=condition=ready pod -l app=myapp -n test --timeout=60s
                         kubectl get pods -n test -l app=myapp
-                        kubectl run smoke-test-%BUILD_NUMBER% --image=curlimages/curl --rm --restart=Never -n test -- curl -s http://myapp-service:3000/health || echo "✅ Test smoke test complete"
                     """
+                    
+                    def podName = bat(
+                        script: "kubectl get pods -n test -l app=myapp -o jsonpath=\"{.items[0].metadata.name}\"",
+                        returnStdout: true
+                    ).trim()
+                    
+                    bat "kubectl exec ${podName} -n test -- wget -O- -q http://localhost:3000/health"
                 }
             }
         }
@@ -141,7 +154,6 @@ pipeline {
                     bat """
                         kubectl apply -f environments/prod/deployment.yaml
                         kubectl set image deployment/myapp myapp=${DOCKER_IMAGE}:${IMAGE_TAG} -n prod
-                        timeout /t 5 /nobreak
                         kubectl rollout status deployment/myapp -n prod --timeout=3m
                     """
                 }
@@ -153,10 +165,16 @@ pipeline {
                 echo '✅ Testing Production...'
                 script {
                     bat """
-                        timeout /t 15 /nobreak
+                        kubectl wait --for=condition=ready pod -l app=myapp -n prod --timeout=60s
                         kubectl get pods -n prod -l app=myapp
-                        kubectl run smoke-prod-%BUILD_NUMBER% --image=curlimages/curl --rm --restart=Never -n prod -- curl -s http://myapp-service:3000/health || echo "✅ Prod smoke test complete"
                     """
+                    
+                    def podName = bat(
+                        script: "kubectl get pods -n prod -l app=myapp -o jsonpath=\"{.items[0].metadata.name}\"",
+                        returnStdout: true
+                    ).trim()
+                    
+                    bat "kubectl exec ${podName} -n prod -- wget -O- -q http://localhost:3000/health"
                 }
             }
         }
