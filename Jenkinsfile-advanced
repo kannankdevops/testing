@@ -17,16 +17,23 @@ pipeline {
         IMAGE_TAG = "${BUILD_NUMBER}"
         KIND_CLUSTER = 'kind'
         KUBECONFIG = 'C:\\ProgramData\\Jenkins\\.jenkins\\kind-kubeconfig.yaml'
+
+        // Slack and email notification environment
+        SLACK_WEBHOOK_URL = credentials('slack-webhook-url')  // Ensure the Slack webhook URL is added as a Jenkins Secret Text credential
+        SLACK_CHANNEL = '#devops-alerts'
+        TEAM_EMAIL = 'devops-team@example.com'
     }
 
     stages {
         stage('Checkout') {
             steps {
+                script {
+                    sendNotification('STARTED', 'Pipeline started')
+                }
                 echo '📥 Checking out code...'
                 checkout scm
             }
         }
-
         stage('Build Docker Image') {
             steps {
                 echo '🐳 Building Docker image...'
@@ -35,10 +42,10 @@ pipeline {
                         docker build -t ${DOCKER_IMAGE}:${IMAGE_TAG} .
                         docker tag ${DOCKER_IMAGE}:${IMAGE_TAG} ${DOCKER_IMAGE}:latest
                     """
+                    sendNotification('INFO', "Docker image built: ${DOCKER_IMAGE}:${IMAGE_TAG}")
                 }
             }
         }
-
         stage('Run Unit Tests') {
             steps {
                 echo '✅ Running unit tests...'
@@ -46,18 +53,22 @@ pipeline {
                 bat 'npm test'
             }
         }
-
         stage('Security Scan') {
             steps {
                 echo '🔒 Running security scan...'
                 script {
-                    bat """
-                        docker run --rm ${DOCKER_IMAGE}:${IMAGE_TAG} npm audit --audit-level=high || echo "✅ Security check complete"
-                    """
+                    def scanResult = bat(
+                        script: "docker run --rm ${DOCKER_IMAGE}:${IMAGE_TAG} npm audit --audit-level=high",
+                        returnStatus: true
+                    )
+                    if (scanResult == 0) {
+                        sendNotification('SUCCESS', '✅ Security scan passed - no vulnerabilities found')
+                    } else {
+                        sendNotification('WARNING', '⚠️ Security vulnerabilities detected')
+                    }
                 }
             }
         }
-
         stage('Load Image to Kind') {
             steps {
                 echo '📦 Loading image to Kind cluster...'
@@ -69,7 +80,6 @@ pipeline {
                 }
             }
         }
-
         stage('Deploy to Dev') {
             steps {
                 echo '🚀 Deploying to Dev environment...'
@@ -79,10 +89,10 @@ pipeline {
                         kubectl set image deployment/myapp myapp=${DOCKER_IMAGE}:${IMAGE_TAG} -n dev
                         kubectl rollout status deployment/myapp -n dev --timeout=2m
                     """
+                    sendNotification('SUCCESS', '✅ Deployed to DEV environment')
                 }
             }
         }
-
         stage('Smoke Test - Dev') {
             steps {
                 echo '🧪 Running smoke tests on Dev...'
@@ -91,17 +101,16 @@ pipeline {
                         kubectl wait --for=condition=ready pod -l app=myapp -n dev --timeout=60s
                         kubectl get pods -n dev -l app=myapp
                     """
-                    
+
                     bat "kubectl get pods -n dev -l app=myapp -o jsonpath=\"{.items[0].metadata.name}\" > pod.txt"
                     def podName = readFile('pod.txt').trim()
                     echo "Testing pod: ${podName}"
-                    
+
                     bat "kubectl exec ${podName} -n dev -- wget -O- -q http://localhost:3000/health"
-                    echo "✅ Dev smoke test passed!"
+                    sendNotification('SUCCESS', '✅ DEV smoke tests passed')
                 }
             }
         }
-
         stage('Deploy to Test') {
             steps {
                 echo '🧪 Deploying to Test environment...'
@@ -111,10 +120,10 @@ pipeline {
                         kubectl set image deployment/myapp myapp=${DOCKER_IMAGE}:${IMAGE_TAG} -n test
                         kubectl rollout status deployment/myapp -n test --timeout=2m
                     """
+                    sendNotification('SUCCESS', '✅ Deployed to TEST environment')
                 }
             }
         }
-
         stage('Smoke Test - Test') {
             steps {
                 echo '🧪 Testing Test environment...'
@@ -123,17 +132,27 @@ pipeline {
                         kubectl wait --for=condition=ready pod -l app=myapp -n test --timeout=60s
                         kubectl get pods -n test -l app=myapp
                     """
-                    
+
                     bat "kubectl get pods -n test -l app=myapp -o jsonpath=\"{.items[0].metadata.name}\" > pod.txt"
                     def podName = readFile('pod.txt').trim()
                     echo "Testing pod: ${podName}"
-                    
+
                     bat "kubectl exec ${podName} -n test -- wget -O- -q http://localhost:3000/health"
-                    echo "✅ Test smoke test passed!"
+                    sendNotification('SUCCESS', '✅ TEST smoke tests passed')
                 }
             }
         }
-
+        stage('Approval for Production') {
+            steps {
+                script {
+                    sendNotification('INFO', '⏸️ Waiting for approval to deploy to PRODUCTION')
+                    timeout(time: 15, unit: 'MINUTES') {
+                        input message: 'Deploy to Production?', ok: 'Deploy'
+                    }
+                    sendNotification('INFO', '✅ Production deployment approved')
+                }
+            }
+        }
         stage('Deploy to Prod') {
             steps {
                 echo '🌟 Deploying to Production...'
@@ -143,10 +162,10 @@ pipeline {
                         kubectl set image deployment/myapp myapp=${DOCKER_IMAGE}:${IMAGE_TAG} -n prod
                         kubectl rollout status deployment/myapp -n prod --timeout=3m
                     """
+                    sendNotification('SUCCESS', '🚀 Deployed to PRODUCTION')
                 }
             }
         }
-
         stage('Smoke Test - Prod') {
             steps {
                 echo '✅ Testing Production...'
@@ -155,13 +174,13 @@ pipeline {
                         kubectl wait --for=condition=ready pod -l app=myapp -n prod --timeout=90s
                         kubectl get pods -n prod -l app=myapp
                     """
-                    
+
                     bat "kubectl get pods -n prod -l app=myapp -o jsonpath=\"{.items[0].metadata.name}\" > pod.txt"
                     def podName = readFile('pod.txt').trim()
                     echo "Testing pod: ${podName}"
-                    
+
                     bat "kubectl exec ${podName} -n prod -- wget -O- -q http://localhost:3000/health"
-                    echo "✅ Prod smoke test passed!"
+                    sendNotification('SUCCESS', '✅ PROD smoke tests passed')
                 }
             }
         }
@@ -169,11 +188,24 @@ pipeline {
 
     post {
         success {
+            script {
+                def summary = """
+✅ DEPLOYMENT SUCCESSFUL!
+━━━━━━━━━━━━━━━━━━━━━━━━━
+📦 Image: ${DOCKER_IMAGE}:${IMAGE_TAG}
+🌍 Environments: DEV → TEST → PROD
+⏱️ Duration: ${currentBuild.durationString.minus(' and counting')}
+🔗 Build: ${env.BUILD_URL}
+                """
+                sendNotification('SUCCESS', summary)
+            }
+
             echo '✅ ═══════════════════════════════════════════'
             echo '✅ PIPELINE COMPLETED SUCCESSFULLY!'
             echo "✅ Docker Image: ${DOCKER_IMAGE}:${IMAGE_TAG}"
             echo '✅ Deployed to: DEV → TEST → PROD'
             echo '✅ ═══════════════════════════════════════════'
+
             script {
                 bat """
                     echo.
@@ -190,15 +222,150 @@ pipeline {
                 """
             }
         }
+
         failure {
+            script {
+                def failedStage = env.STAGE_NAME ?: 'Unknown'
+                def errorMsg = """
+❌ DEPLOYMENT FAILED!
+━━━━━━━━━━━━━━━━━━━━━━━━━
+❌ Stage: ${failedStage}
+📦 Image: ${DOCKER_IMAGE}:${IMAGE_TAG}
+⏱️ Duration: ${currentBuild.durationString.minus(' and counting')}
+🔗 Build: ${env.BUILD_URL}console
+                """
+                sendNotification('FAILURE', errorMsg)
+            }
+
             echo '❌ ═══════════════════════════════════════════'
             echo '❌ PIPELINE FAILED!'
             echo '❌ Check the logs above for details'
             echo '❌ ═══════════════════════════════════════════'
         }
+
+        unstable {
+            script {
+                sendNotification('WARNING', "⚠️ Build unstable: ${env.BUILD_URL}")
+            }
+        }
+
         always {
             echo '🧹 Cleaning up Docker images...'
             bat 'docker image prune -f || exit /b 0'
+
+            // Generate deployment report
+            script {
+                def report = generateDeploymentReport()
+                writeFile file: 'deployment-report.txt', text: report
+                archiveArtifacts artifacts: 'deployment-report.txt', allowEmptyArchive: true
+            }
         }
     }
+}
+
+// Helper function for notifications
+def sendNotification(String status, String message) {
+    def color = 'good'
+    def emoji = '✅'
+
+    switch(status) {
+        case 'SUCCESS':
+            color = 'good'
+            emoji = '✅'
+            break
+        case 'FAILURE':
+            color = 'danger'
+            emoji = '❌'
+            break
+        case 'WARNING':
+            color = 'warning'
+            emoji = '⚠️'
+            break
+        case 'INFO':
+            color = '#439FE0'
+            emoji = 'ℹ️'
+            break
+        case 'STARTED':
+            color = '#439FE0'
+            emoji = '🚀'
+            break
+    }
+
+    // Console output
+    echo "${emoji} ${message}"
+
+    // Slack notification (if webhook configured)
+    try {
+        if (env.SLACK_WEBHOOK_URL) {
+            bat """
+                powershell -Command "Invoke-RestMethod -Uri '${env.SLACK_WEBHOOK_URL}' -Method Post -Body (ConvertTo-Json @{text='${emoji} ${message}'; channel='${env.SLACK_CHANNEL}'}) -ContentType 'application/json'"
+            """
+        }
+    } catch (Exception e) {
+        echo "Slack notification failed: ${e.message}"
+    }
+
+    // Email notification (optional)
+    if (status in ['SUCCESS', 'FAILURE']) {
+        try {
+            emailext(
+                subject: "${emoji} Jenkins Build ${status}: ${env.JOB_NAME} #${env.BUILD_NUMBER}",
+                body: """
+                    <h2>${emoji} Build ${status}</h2>
+                    <p><strong>Job:</strong> ${env.JOB_NAME}</p>
+                    <p><strong>Build Number:</strong> ${env.BUILD_NUMBER}</p>
+                    <p><strong>Message:</strong> ${message}</p>
+                    <p><strong>URL:</strong> <a href="${env.BUILD_URL}">${env.BUILD_URL}</a></p>
+                """,
+                to: env.TEAM_EMAIL,
+                mimeType: 'text/html'
+            )
+        } catch (Exception e) {
+            echo "Email notification failed: ${e.message}"
+        }
+    }
+}
+
+// Generate deployment report
+def generateDeploymentReport() {
+    def timestamp = new Date().format('yyyy-MM-dd HH:mm:ss')
+    return """
+═══════════════════════════════════════════════════════
+            DEPLOYMENT REPORT
+═══════════════════════════════════════════════════════
+Generated: ${timestamp}
+Build Number: ${env.BUILD_NUMBER}
+Image: ${env.DOCKER_IMAGE}:${env.IMAGE_TAG}
+Status: ${currentBuild.currentResult}
+Duration: ${currentBuild.durationString.minus(' and counting')}
+Build URL: ${env.BUILD_URL}
+
+ENVIRONMENTS DEPLOYED:
+• DEV   ✅
+• TEST  ✅
+• PROD  ✅
+
+CHANGES IN THIS BUILD:
+${getChangeLog()}
+
+═══════════════════════════════════════════════════════
+"""
+}
+
+// Get changelog
+def getChangeLog() {
+    def changeLogSets = currentBuild.changeSets
+    if (changeLogSets.isEmpty()) {
+        return "No changes"
+    }
+
+    def changes = []
+    for (int i = 0; i < changeLogSets.size(); i++) {
+        def entries = changeLogSets[i].items
+        for (int j = 0; j < entries.length; j++) {
+            def entry = entries[j]
+            changes << "• ${entry.msg} (${entry.author})"
+        }
+    }
+    return changes.join('\n')
 }
